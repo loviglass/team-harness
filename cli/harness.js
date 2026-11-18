@@ -380,7 +380,15 @@ function usage() {
   team-harness version`);
 }
 
-export async function main(argv) {
+// OpenCode subcommands passed through as-is; any other bare word is a typo, not a project path.
+const ENGINE_COMMANDS = new Set(["run", "debug", "session", "export", "import", "models", "stats", "serve", "web", "attach", "agent", "mcp", "acp", "db", "providers", "pr", "github"]);
+
+export function normalizeArgs(argv) {
+  return argv.map((a) => String(a).replace(/^\s*"?|"?\s*$/g, "")).filter((a, i) => a !== "" || i > 0);
+}
+
+export async function main(rawArgv) {
+  const argv = normalizeArgs(rawArgv);
   const [cmd, ...rest] = argv;
   switch (cmd) {
     case "-h": case "--help": case "help":
@@ -427,6 +435,11 @@ export async function main(argv) {
       return metricsMain(["--db", join(BASE, "data", "opencode", "opencode.db"), ...rest]);
     }
     default: {
+      if (cmd && !cmd.startsWith("-") && !ENGINE_COMMANDS.has(cmd) && !(existsSync(cmd) && statSync(cmd).isDirectory())) {
+        console.error(`team-harness: unknown command or folder: ${JSON.stringify(cmd)}\n`);
+        usage();
+        process.exit(2);
+      }
       // Quiet background-style check; a failed check never blocks work.
       let updated = false;
       try {

@@ -81,6 +81,7 @@ if (-not (($UserPath -split ';') -contains $Bin)) {
 Update-SessionPath
 
 # Logins and checks (interactive).
-$SetupArgs = if ($env:TEAM_HARNESS_SKIP_LOGIN) { @('setup', '--no-login') } else { @('setup') }
-& (Join-Path $Bin 'team-harness.cmd') @SetupArgs
+# Explicit calls: splatting a one-element array into a .cmd is unreliable across PowerShell versions.
+$Shim = Join-Path $Bin 'team-harness.cmd'
+if ($env:TEAM_HARNESS_SKIP_LOGIN) { & $Shim setup --no-login } else { & $Shim setup }
 if ($LASTEXITCODE -ne 0) { throw 'setup failed' }

@@ -47,3 +47,9 @@ test("project CLAUDE.md is passed only where a directory has no AGENTS.md", () =
   assert.deepEqual(projectInstructions("/repo/svc/api", exists).map((p) => p.replace(/\\/g, "/").replace(/^[A-Z]:/, "")), ["/repo/CLAUDE.md", "/repo/svc/api/CLAUDE.md"]);
   assert.deepEqual(projectInstructions("/elsewhere", () => false), []);
 });
+
+test("argument normalization strips stray quotes/whitespace from shells", async () => {
+  const { normalizeArgs } = await import("../cli/harness.js");
+  assert.deepEqual(normalizeArgs(['"setup"', " --no-login "]), ["setup", "--no-login"]);
+  assert.deepEqual(normalizeArgs(["", "x"]), ["x"]);
+});

@@ -49,6 +49,19 @@ jobs:
         run: |
           call "%LOCALAPPDATA%\team-harness\bin\team-harness.cmd" doctor || exit /b 1
           call "%LOCALAPPDATA%\team-harness\bin\team-harness.cmd" version || exit /b 1
+      - name: single-argument calls from PowerShell 7 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $shim = Join-Path $env:LOCALAPPDATA 'team-harness\bin\team-harness.cmd'
+          & $shim version; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $shim doctor; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $shim setup --no-login; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $shim nosuchcommand; if ($LASTEXITCODE -ne 2) { exit 1 }
+      - name: reinstall under PowerShell 7 (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./install.ps1
       - name: reinstall is idempotent (macOS/Linux)
         if: runner.os != 'Windows'
         run: sh install.sh
