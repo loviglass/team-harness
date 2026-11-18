@@ -13,8 +13,8 @@ const LIMITS = {
 const TEXT_TOOLS = new Set(["read", "grep", "glob", "list"]);
 
 function limitsFor(agent) {
-  if (agent === "lead-kimi") return LIMITS.lead;
-  return LIMITS[agent] || LIMITS.default;
+  const base = { "lead-kimi": "lead", "reviewer-kimi": "reviewer", "advisor-kimi": "advisor", "takeover-astra": "takeover" }[agent] || agent;
+  return LIMITS[base] || LIMITS.default;
 }
 
 export function capText(text, maxChars, maxLines, tool) {

@@ -1,7 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
-    "./plugins/output-cap.js"
+    "./plugins/output-cap.js",
+    "./plugins/swap.js"
   ],
   "model": "openai/gpt-6-astra",
   "small_model": "deepseek/deepseek-flash",
@@ -40,7 +41,7 @@
       "variant": "high"
     },
     "lead": {
-      "description": "Lead (Astra): decides, writes task briefs, delegates, accepts results. Cannot edit or run commands.",
+      "description": "Lead on Astra (mode A: reviewer/advisor on Astra, takeover on Kimi). Tab switches to lead-kimi (swap).",
       "mode": "primary",
       "model": "openai/gpt-6-astra",
       "variant": "high",
@@ -63,13 +64,16 @@
           "takeover": "allow",
           "reviewer": "allow",
           "advisor": "allow",
-          "analyst": "allow"
+          "analyst": "allow",
+          "reviewer-kimi": "allow",
+          "advisor-kimi": "allow",
+          "takeover-astra": "allow"
         },
         "todowrite": "deny"
       }
     },
     "lead-kimi": {
-      "description": "Lead (Kimi): same role as lead, for A/B comparison.",
+      "description": "Lead on Kimi (mode B, swapped: reviewer/advisor on Kimi, takeover on Astra). Tab switches back.",
       "mode": "primary",
       "model": "kimi-code-plan-global/k3.1-pro",
       "variant": "high",
@@ -92,7 +96,10 @@
           "takeover": "allow",
           "reviewer": "allow",
           "advisor": "allow",
-          "analyst": "allow"
+          "analyst": "allow",
+          "reviewer-kimi": "allow",
+          "advisor-kimi": "allow",
+          "takeover-astra": "allow"
         },
         "todowrite": "deny"
       }
@@ -192,6 +199,48 @@
       "prompt": "{file:./prompts/advisor.md}",
       "permission": {
         "*": "deny"
+      }
+    },
+    "reviewer-kimi": {
+      "description": "Swap mirror of reviewer (Kimi). Selected automatically in Kimi-lead mode; do not call directly.",
+      "mode": "subagent",
+      "model": "kimi-code-plan-global/k3.1-pro",
+      "variant": "high",
+      "steps": 15,
+      "prompt": "{file:./prompts/reviewer.md}",
+      "permission": {
+        "edit": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git show*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "advisor-kimi": {
+      "description": "Swap mirror of advisor (Kimi). Selected automatically in Kimi-lead mode; do not call directly.",
+      "mode": "subagent",
+      "model": "kimi-code-plan-global/k3.1-pro",
+      "variant": "high",
+      "steps": 1,
+      "prompt": "{file:./prompts/advisor.md}",
+      "permission": {
+        "*": "deny"
+      }
+    },
+    "takeover-astra": {
+      "description": "Swap mirror of takeover (Astra). Selected automatically in Kimi-lead mode; do not call directly.",
+      "mode": "subagent",
+      "model": "openai/gpt-6-astra",
+      "variant": "high",
+      "steps": 80,
+      "prompt": "{file:./prompts/worker.md}",
+      "permission": {
+        "task": "deny"
       }
     }
   },

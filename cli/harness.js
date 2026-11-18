@@ -273,7 +273,7 @@ function login(only) {
 
 // ---------- doctor ----------
 
-const ROLES = ["lead", "lead-kimi", "worker", "takeover", "scout", "analyst", "reviewer", "advisor"];
+const ROLES = ["lead", "lead-kimi", "worker", "takeover", "takeover-astra", "scout", "analyst", "reviewer", "reviewer-kimi", "advisor", "advisor-kimi"];
 
 function doctor() {
   const versions = readVersions();

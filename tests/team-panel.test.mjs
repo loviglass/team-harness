@@ -30,22 +30,43 @@ test("deepseek balance and missing login", () => {
   assert.equal(p.renderQuota({ label: "GPT", status: "not connected" })[1].text.trim(), "not connected");
 });
 
-test("team view shows the active lead only and who is working", () => {
-  const roles = p.teamRoles({ agent: {
-    lead: { mode: "primary", model: "openai/gpt-6-astra" },
-    "lead-kimi": { mode: "primary", model: "kimi-code-plan-global/k3.1-pro" },
-    worker: { mode: "subagent", model: "deepseek/deepseek-flash" },
-    title: { model: "deepseek/deepseek-flash" },
-  } });
+const CONFIG = { agent: {
+  lead: { mode: "primary", model: "openai/gpt-6-astra" },
+  "lead-kimi": { mode: "primary", model: "kimi-code-plan-global/k3.1-pro" },
+  worker: { mode: "subagent", model: "deepseek/deepseek-flash" },
+  reviewer: { mode: "subagent", model: "openai/gpt-6-astra" },
+  "reviewer-kimi": { mode: "subagent", model: "kimi-code-plan-global/k3.1-pro" },
+  takeover: { mode: "subagent", model: "kimi-code-plan-global/k3.1-pro" },
+  "takeover-astra": { mode: "subagent", model: "openai/gpt-6-astra" },
+  title: { model: "deepseek/deepseek-flash" },
+} };
+
+test("team view: one lead row, mirrors folded into base roles, who is working", () => {
   const v = p.teamView({
-    roles,
+    roles: p.teamRoles(CONFIG, "A"),
     root: { id: "r", agent: "lead", tokens: { input: 1000, output: 10, reasoning: 0, cache: { read: 9000, write: 0 } } },
     children: [{ id: "c", agent: "worker", title: "Fix median", tokens: { input: 100, output: 1, reasoning: 0, cache: { read: 0, write: 0 } } }],
     statuses: { c: { type: "busy" } },
   });
   const team = p.renderTeam(v).map((l) => l.text);
-  assert.equal(team.length, 2);
+  assert.equal(team.length, 4);
   assert.match(team[0], /^lead\s+Astra/);
   assert.match(team[1], /worker\s+DS Flash\s+● Fix median/);
+  assert.ok(!team.some((t) => /kimi|astra/.test(t.split(/\s+/)[0])));
   assert.match(p.renderSpend(v)[0], /lead\s+10K in/);
+});
+
+test("mode B shows swapped models and counts mirror sessions under the base role", () => {
+  assert.equal(p.swapMode("lead-kimi"), "B");
+  assert.equal(p.swapMode("lead"), "A");
+  const v = p.teamView({
+    roles: p.teamRoles(CONFIG, "B"), mode: "B",
+    root: { id: "r", agent: "lead" },
+    children: [{ id: "c", agent: "reviewer-kimi", title: "Review" }],
+  });
+  const team = p.renderTeam(v).map((l) => l.text);
+  assert.match(team.find((t) => t.startsWith("lead")), /Kimi/);
+  assert.match(team.find((t) => t.startsWith("reviewer")), /Kimi\s+✓ 1 done/);
+  assert.match(team.find((t) => t.startsWith("takeover")), /Astra/);
+  assert.match(p.renderMode("B").text, /swapped/);
 });

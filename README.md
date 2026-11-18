@@ -65,6 +65,23 @@ node --test tests/*.test.mjs && team-harness doctor
 git tag -a v0.2.0 -m "что изменилось" && git push origin main --tags
 ```
 
+## Рокировка Astra ↔ Kimi
+
+Если подписка одной модели расходуется быстрее, нажмите **Tab** в TUI: `lead` ↔ `lead-kimi`.
+
+| | Режим A (`lead`, по умолчанию) | Режим B (`lead-kimi`, рокировка) |
+|---|---|---|
+| lead | Astra | Kimi |
+| reviewer | Astra | Kimi |
+| advisor | Astra | Kimi |
+| takeover | Kimi | Astra |
+| worker / scout / analyst | DeepSeek | DeepSeek |
+
+Переключать можно посреди сессии: история сохраняется, новая модель один раз читает контекст lead
+без кэша (обычно 10–30 тыс. токенов). Уже работающие субагенты не прерываются; следующие
+вызовы reviewer/advisor/takeover идут к модели нового режима (`plugins/swap.js`).
+Текущий режим показан в панели под Team.
+
 ## Правая панель
 
 Под Context (если скрыта: `Ctrl+X`, затем `B`):

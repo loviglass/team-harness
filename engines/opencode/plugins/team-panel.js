@@ -38,12 +38,24 @@ export function shortModel(id) {
   return known[name] || clean(name, 14);
 }
 
-// Roles = configured, enabled agents that are not internal helpers.
-export function teamRoles(config) {
+// Swap mirrors (see swap.js): in mode B these agents serve the base role.
+export const BASE_ROLE = { "lead-kimi": "lead", "reviewer-kimi": "reviewer", "advisor-kimi": "advisor", "takeover-astra": "takeover" };
+const MIRROR = Object.fromEntries(Object.entries(BASE_ROLE).map(([alt, base]) => [base, alt]));
+
+export function swapMode(leadAgent) {
+  return leadAgent === "lead-kimi" ? "B" : "A";
+}
+
+// Roles = configured, enabled agents that are not internal helpers or swap mirrors.
+// The model shown is the one serving the role in the current mode.
+export function teamRoles(config, mode = "A") {
   const agents = config?.agent || {};
   return Object.entries(agents)
-    .filter(([name, a]) => a && !a.disable && !HIDDEN_AGENTS.has(name))
-    .map(([name, a]) => ({ name, model: a.model || config?.model, mode: a.mode || "all" }))
+    .filter(([name, a]) => a && !a.disable && !HIDDEN_AGENTS.has(name) && !(name in BASE_ROLE))
+    .map(([name, a]) => {
+      const served = mode === "B" && MIRROR[name] && agents[MIRROR[name]] ? agents[MIRROR[name]] : a;
+      return { name, model: served.model || config?.model, mode: a.mode || "all" };
+    })
     .sort((a, b) => (a.mode === "primary" ? 0 : 1) - (b.mode === "primary" ? 0 : 1));
 }
 
@@ -54,16 +66,17 @@ function sessionTokens(s) {
 }
 
 // root: Session, children: Session[], statuses: {id: SessionStatus}
-export function teamView({ roles, root, children = [], statuses = {}, leadContext = 0 }) {
+export function teamView({ roles, root, children = [], statuses = {}, leadContext = 0, mode = "A" }) {
   const byRole = new Map(roles.map((r) => [r.name, { ...r, working: [], done: 0, input: 0, output: 0, used: false }]));
-  const ensure = (name, model) => {
+  const ensure = (agent, model) => {
+    const name = BASE_ROLE[agent] || agent;
     if (!byRole.has(name)) byRole.set(name, { name, model, mode: "subagent", working: [], done: 0, input: 0, output: 0, used: false });
     return byRole.get(name);
   };
   if (root) {
-    const lead = ensure(root.agent || "lead", root.model ? `${root.model.providerID}/${root.model.id}` : undefined);
+    const lead = ensure("lead");
     const t = sessionTokens(root);
-    lead.input += t.input; lead.output += t.output; lead.used = true; lead.isLead = true;
+    lead.input += t.input; lead.output += t.output; lead.used = true;
     if (statuses[root.id]?.type === "busy" || statuses[root.id]?.type === "retry") lead.working.push(statuses[root.id].type === "retry" ? "retrying" : "thinking");
   }
   for (const c of children) {
@@ -74,10 +87,15 @@ export function teamView({ roles, root, children = [], statuses = {}, leadContex
     if (st === "busy" || st === "retry") role.working.push(clean(c.title, 34));
     else role.done += 1;
   }
-  // Show only the lead actually driving this session; other primary agents are alternatives.
-  const rows = [...byRole.values()].filter((r) => r.mode !== "primary" || r.isLead || !root);
+  const rows = [...byRole.values()];
   const total = rows.reduce((acc, r) => ({ input: acc.input + r.input, output: acc.output + r.output }), { input: 0, output: 0 });
-  return { rows, total, leadContext };
+  return { rows, total, leadContext, mode };
+}
+
+export function renderMode(mode) {
+  return mode === "B"
+    ? { text: "Mode B (swapped): Kimi leads/reviews · Tab = swap", tone: "warning" }
+    : { text: "Mode A: Astra leads/reviews · Tab = swap", tone: "muted" };
 }
 
 export function renderTeam(view) {
@@ -311,7 +329,14 @@ export default {
     ];
     api.lifecycle.onDispose(() => { disposed = true; clearTimeout(timer); clearInterval(quotaTimer); unsubs.forEach((u) => u()); });
 
-    const roles = createMemo(() => teamRoles(api.state.config));
+    // Current lead = agent of the latest message in the root session (Tab changes it mid-session).
+    const mode = createMemo(() => {
+      const id = rootId();
+      const msgs = id ? api.state.session.messages(id) || [] : [];
+      for (let i = msgs.length - 1; i >= 0; i--) if (typeof msgs[i]?.agent === "string") return swapMode(msgs[i].agent);
+      return swapMode(root()?.agent);
+    });
+    const roles = createMemo(() => teamRoles(api.state.config, mode()));
     const leadContext = createMemo(() => {
       const id = rootId();
       if (!id) return 0;
@@ -322,7 +347,7 @@ export default {
       }
       return 0;
     });
-    const view = createMemo(() => teamView({ roles: roles(), root: root(), children: children(), statuses: statuses(), leadContext: leadContext() }));
+    const view = createMemo(() => teamView({ roles: roles(), root: root(), children: children(), statuses: statuses(), leadContext: leadContext(), mode: mode() }));
 
     function el(tag, props = {}) {
       const node = createElement(tag);
@@ -361,6 +386,7 @@ export default {
           const box = el("box", { width: "100%", minWidth: 0, flexDirection: "column", flexShrink: 0 });
 
           insert(box, heading("Team"));
+          insert(box, line(() => renderMode(mode()).text, () => renderMode(mode()).tone));
           const team = createMemo(() => renderTeam(view()));
           for (let i = 0; i < 10; i++) {
             const t = line(() => team()[i]?.text || "", () => team()[i]?.tone);
