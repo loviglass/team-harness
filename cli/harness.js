@@ -132,6 +132,9 @@ export function engineEnv(base = BASE, root = ROOT, src = process.env) {
     // Project CLAUDE.md files are passed explicitly instead (projectInstructions).
     OPENCODE_DISABLE_CLAUDE_CODE: "true",
     OPENCODE_DISABLE_EXTERNAL_SKILLS: "true",
+    // Ctrl+B sends a running subagent to the background so the lead (and you) can continue;
+    // also enables task background:true. Same as the old harness.
+    OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS: "true",
   });
   return env;
 }

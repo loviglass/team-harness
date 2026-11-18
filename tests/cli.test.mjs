@@ -36,6 +36,7 @@ test("engine env is isolated and never leaks the Bun switch", () => {
   assert.equal(env.XDG_CONFIG_HOME, join("/b", "config"));
   assert.equal(env.PATH, "/usr/bin");
   assert.match(env.OPENCODE_CONFIG_DIR, /engines.opencode$/);
+  assert.equal(env.OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS, "true", "Ctrl+B background subagents");
 });
 
 test("Claude Code compatibility is off (no personal ~/.claude/CLAUDE.md)", () => {
