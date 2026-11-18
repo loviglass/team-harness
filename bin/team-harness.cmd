@@ -7,7 +7,7 @@ if not exist "%CLI%" set "CLI=%BASE%\repo\cli\harness.js"
 set "RT="
 if exist "%BASE%\engine\current" set /p RT=<"%BASE%\engine\current"
 if not defined RT (
-  echo team-harness: not installed. In PowerShell run: irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 ^| iex 1>&2
+  echo team-harness: not installed. Run: powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 | iex" 1>&2
   exit /b 1
 )
 set BUN_BE_BUN=1

@@ -1,5 +1,6 @@
 # team-harness installer for Windows (PowerShell 5.1+):
-#   irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 | iex
+#   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 | iex"
+#   (works from cmd and PowerShell; inside PowerShell the part in quotes is enough)
 # Re-running it is safe (repairs/updates the install).
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'

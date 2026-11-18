@@ -21,9 +21,9 @@
 ```sh
 curl -fsSL https://raw.githubusercontent.com/loviglass/team-harness/main/install.sh | sh
 ```
-**Windows** (PowerShell, без прав администратора):
-```powershell
-irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 | iex
+**Windows** (в cmd или PowerShell, без прав администратора):
+```cmd
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 | iex"
 ```
 
 Нужен только Git (на Windows ставится сам через winget, если его нет).
