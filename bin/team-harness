@@ -1,140 +1,24 @@
 #!/bin/sh
-# team-harness: runs the pinned OpenCode with the team config from this repo.
-# No changes to OpenCode itself; config, prompts and versions live in git.
+# Launcher: runs cli/harness.js on the Bun runtime embedded in the installed OpenCode.
 set -eu
-
-ROOT=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)
-. "$ROOT/versions.env"
-
-BASE=${TEAM_HARNESS_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/team-harness}
-ENGINE_DIR="$BASE/engine/opencode-$OPENCODE_VERSION"
-OLD_HARNESS=${XDG_DATA_HOME:-$HOME/.local/share}/opencode-team-harness
-
-die() { echo "team-harness: $*" >&2; exit 1; }
-
-platform() {
-  case "$(uname -s)" in
-    Linux) os=linux ;;
-    Darwin) os=darwin ;;
-    *) die "unsupported OS $(uname -s)" ;;
-  esac
-  case "$(uname -m)" in
-    x86_64|amd64) arch=x64 ;;
-    aarch64|arm64) arch=arm64 ;;
-    *) die "unsupported CPU $(uname -m)" ;;
-  esac
-  echo "${os}_${arch}"
-}
-
-engine_bin() {
-  if [ -n "${OPENCODE_BIN:-}" ]; then echo "$OPENCODE_BIN"; return; fi
-  if [ -x "$ENGINE_DIR/opencode" ]; then echo "$ENGINE_DIR/opencode"; return; fi
-  die "OpenCode $OPENCODE_VERSION is not installed; run: team-harness install-engine"
-}
-
-install_engine() {
-  [ -x "$ENGINE_DIR/opencode" ] && { echo "OpenCode $OPENCODE_VERSION already installed"; return; }
-  p=$(platform)
-  eval "sha=\${OPENCODE_SHA256_$p:-}"
-  [ -n "$sha" ] || die "no pinned checksum for $p"
-  os=${p%_*}; arch=${p#*_}
-  case "$os/$arch" in
-    linux/x64) asset=opencode-linux-x64-baseline.tar.gz ;;
-    linux/arm64) asset=opencode-linux-arm64.tar.gz ;;
-    darwin/x64) asset=opencode-darwin-x64-baseline.zip ;;
-    darwin/arm64) asset=opencode-darwin-arm64.zip ;;
-  esac
-  tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT
-  url="https://github.com/anomalyco/opencode/releases/download/v$OPENCODE_VERSION/$asset"
-  echo "Downloading $url"
-  curl -fsSL --retry 3 -o "$tmp/$asset" "$url"
-  got=$( (sha256sum "$tmp/$asset" 2>/dev/null || shasum -a 256 "$tmp/$asset") | cut -d' ' -f1)
-  [ "$got" = "$sha" ] || die "checksum mismatch for $asset: $got"
-  case "$asset" in
-    *.tar.gz) tar -xzf "$tmp/$asset" -C "$tmp" ;;
-    *.zip) unzip -q "$tmp/$asset" -d "$tmp" ;;
-  esac
-  [ -f "$tmp/opencode" ] || die "archive has no opencode binary"
-  mkdir -p "$ENGINE_DIR"
-  mv "$tmp/opencode" "$ENGINE_DIR/opencode"
-  chmod 755 "$ENGINE_DIR/opencode"
-  "$ENGINE_DIR/opencode" --version >/dev/null
-  echo "Installed OpenCode $OPENCODE_VERSION to $ENGINE_DIR"
-}
-
-setup_env() {
-  mkdir -p "$BASE/config" "$BASE/data" "$BASE/state" "$BASE/cache"
-  # Isolate from personal OpenCode config (e.g. a global Slim install) and from old harness data.
-  export XDG_CONFIG_HOME="$BASE/config"
-  export XDG_DATA_HOME="$BASE/data"
-  export XDG_STATE_HOME="$BASE/state"
-  export XDG_CACHE_HOME="$BASE/cache"
-  export OPENCODE_CONFIG_DIR="$ROOT/engines/opencode"
-  export OPENCODE_DISABLE_AUTOUPDATE=true
-  export OPENCODE_DISABLE_LSP_DOWNLOAD=true
-  export OPENCODE_DISABLE_CLAUDE_CODE=true
-  export OPENCODE_DISABLE_EXTERNAL_SKILLS=true
-  unset OPENCODE_CONFIG OPENCODE_CONFIG_CONTENT
-}
-
-auth_import() {
-  src="$OLD_HARNESS/data/opencode/auth.json"
-  dst="$BASE/data/opencode/auth.json"
-  [ -f "$src" ] || die "no old harness credentials at $src; use: team-harness auth login"
-  [ -f "$dst" ] && die "$dst already exists; remove it first to re-import"
-  mkdir -p "$(dirname "$dst")"
-  (umask 077; cp "$src" "$dst")
-  echo "Imported provider logins from the old harness."
-}
-
-usage() {
-  cat <<EOF
-team-harness — OpenCode $OPENCODE_VERSION with the team roles (lead/worker/scout/reviewer/advisor/takeover)
-
-  team-harness [opencode args]    open the TUI in the current project (default agent: lead)
-  team-harness run ...            headless run (passes through to 'opencode run')
-  team-harness auth login         log in to providers (ChatGPT, DeepSeek, Kimi)
-  team-harness auth import        copy logins from the old opencode-team-harness
-  team-harness install-engine     download the pinned OpenCode
-  team-harness update             git pull this repo, install engine if the pin changed
-  team-harness doctor             validate config and agents without model calls
-  team-harness metrics [args]     token report from local sessions (see metrics/README)
-EOF
-}
-
-cmd=${1:-}
-case "$cmd" in
-  -h|--help|help) usage ;;
-  install-engine) install_engine ;;
-  update)
-    git -C "$ROOT" pull --ff-only
-    . "$ROOT/versions.env"
-    ENGINE_DIR="$BASE/engine/opencode-$OPENCODE_VERSION"
-    install_engine ;;
-  auth)
-    shift
-    case "${1:-login}" in
-      import) setup_env; auth_import ;;
-      *) bin=$(engine_bin); setup_env; exec "$bin" auth "$@" ;;
-    esac ;;
-  doctor)
-    bin=$(engine_bin); setup_env
-    v=$("$bin" --version); [ "$v" = "$OPENCODE_VERSION" ] || die "engine version $v != pinned $OPENCODE_VERSION"
-    "$bin" debug config >/dev/null || die "config does not resolve"
-    for a in lead lead-kimi worker takeover scout reviewer advisor; do
-      "$bin" debug agent "$a" >/dev/null || die "agent $a is invalid"
-    done
-    # Hard guarantee behind the design: leads have no write/fetch tools.
-    for a in lead lead-kimi; do
-      "$bin" debug agent "$a" | python3 -c 'import json,sys; t=json.load(sys.stdin).get("tools") or {}; bad=[k for k in ("edit","write","patch","webfetch","websearch") if t.get(k)]; sys.exit("lead has tools: %s" % bad if bad else 0)' \
-        || die "agent $a must not have write/fetch tools"
-    done
-    [ -f "$BASE/data/opencode/auth.json" ] || echo "warning: no provider logins yet (team-harness auth login|import)"
-    echo "ok: OpenCode $v, agents valid, config $OPENCODE_CONFIG_DIR" ;;
-  metrics)
-    shift
-    exec python3 "$ROOT/metrics/harness_metrics.py" --db "$BASE/data/opencode/opencode.db" "$@" ;;
-  *)
-    bin=$(engine_bin); setup_env; exec "$bin" "$@" ;;
+case "$(uname -s)" in
+  Darwin) BASE_DEFAULT="$HOME/Library/Application Support/team-harness" ;;
+  *) BASE_DEFAULT="${XDG_DATA_HOME:-$HOME/.local/share}/team-harness" ;;
 esac
+BASE=${TEAM_HARNESS_HOME:-$BASE_DEFAULT}
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ ! -f "$ROOT/cli/harness.js" ]; then
+  REAL=$(readlink -f -- "$0" 2>/dev/null || true)
+  if [ -n "$REAL" ] && [ -f "$(dirname -- "$REAL")/../cli/harness.js" ]; then
+    ROOT=$(CDPATH= cd -- "$(dirname -- "$REAL")/.." && pwd)
+  else
+    ROOT="$BASE/repo"
+  fi
+fi
+RT=$(cat "$BASE/engine/current" 2>/dev/null || true)
+if [ -z "$RT" ] || [ ! -x "$RT" ]; then
+  echo "team-harness: not installed. Run the installer:" >&2
+  echo "  curl -fsSL https://raw.githubusercontent.com/loviglass/team-harness/main/install.sh | sh" >&2
+  exit 1
+fi
+BUN_BE_BUN=1 exec "$RT" "$ROOT/cli/harness.js" "$@"
