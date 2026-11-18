@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { latestTag, engineAsset, appBase, platformKey, engineEnv, readVersions } from "../cli/harness.js";
+import { latestTag, engineAsset, appBase, platformKey, engineEnv, readVersions, projectInstructions } from "../cli/harness.js";
 
 test("latest semver tag wins, junk ignored", () => {
   assert.equal(latestTag(["v0.9.0", "v0.10.0", "v0.2.11", "nightly", "v1.0.0-rc1", ""]), "v0.10.0");
@@ -35,4 +35,15 @@ test("engine env is isolated and never leaks the Bun switch", () => {
   assert.equal(env.XDG_CONFIG_HOME, "/b/config");
   assert.equal(env.PATH, "/usr/bin");
   assert.match(env.OPENCODE_CONFIG_DIR, /engines.opencode$/);
+});
+
+test("Claude Code compatibility is off (no personal ~/.claude/CLAUDE.md)", () => {
+  assert.equal(engineEnv("/b", "/r", {}).OPENCODE_DISABLE_CLAUDE_CODE, "true");
+});
+
+test("project CLAUDE.md is passed only where a directory has no AGENTS.md", () => {
+  const files = new Set(["/repo/.git", "/repo/CLAUDE.md", "/repo/svc/CLAUDE.md", "/repo/svc/AGENTS.md", "/repo/svc/api/CLAUDE.md"]);
+  const exists = (p) => files.has(p.replace(/\\/g, "/").replace(/^[A-Z]:/, ""));
+  assert.deepEqual(projectInstructions("/repo/svc/api", exists).map((p) => p.replace(/\\/g, "/").replace(/^[A-Z]:/, "")), ["/repo/CLAUDE.md", "/repo/svc/api/CLAUDE.md"]);
+  assert.deepEqual(projectInstructions("/elsewhere", () => false), []);
 });

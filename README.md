@@ -8,7 +8,8 @@
 | lead | GPT-6 Astra | разговаривает с вами, решает, пишет брифы, принимает результат; **не может править файлы и запускать команды** |
 | worker | DeepSeek Flash | реализует одну задачу и сам прогоняет проверки |
 | takeover | Kimi K3.1 Pro | забирает задачу, если worker дважды не прошёл проверку |
-| scout | DeepSeek Flash | ищет по коду и документации, возвращает пути и выдержки |
+| scout | DeepSeek Flash (low) | быстро ищет, где что лежит; возвращает пути и выдержки |
+| analyst | DeepSeek Flash (high) | глубокий read-only разбор: проверить гипотезу, найти реальные дефекты в подсистеме |
 | reviewer | GPT-6 Astra | независимое ревью рискованного диффа |
 | advisor | GPT-6 Astra | диагноз/решение без инструментов |
 
@@ -49,8 +50,13 @@ team-harness doctor
 не приходят — только теги.
 
 Данные и входы: `~/.local/share/team-harness` (Linux), `~/Library/Application Support/team-harness` (macOS),
-`%LOCALAPPDATA%\team-harness` (Windows). Личный `~/.config/opencode` не используется и не меняется.
-Проектные `opencode.json` и `AGENTS.md` подключаются как обычно.
+`%LOCALAPPDATA%\team-harness` (Windows). Личный `~/.config/opencode` и `~/.claude` не используются и не меняются.
+Проектные `opencode.json` и `AGENTS.md` подключаются как обычно; если в репозитории вместо
+`AGENTS.md` лежит `CLAUDE.md`, он передаётся агентам автоматически.
+
+Вывод инструментов, попадающий в контекст, ограничен (`engines/opencode/plugins/output-cap.js`):
+lead 8 тыс. символов, scout/analyst/reviewer 12 тыс., worker 24 тыс.; у команд сохраняются начало
+и конец вывода, чтобы ошибки тестов не терялись.
 
 ## Выпуск обновления (владелец)
 

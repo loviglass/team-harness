@@ -131,15 +131,43 @@ export function engineEnv(base = BASE, root = ROOT, src = process.env) {
     OPENCODE_CONFIG_DIR: join(root, "engines", "opencode"),
     OPENCODE_DISABLE_AUTOUPDATE: "true",
     OPENCODE_DISABLE_LSP_DOWNLOAD: "true",
+    // No Claude Code compatibility: it would also load a personal ~/.claude/CLAUDE.md.
+    // Project CLAUDE.md files are passed explicitly instead (projectInstructions).
     OPENCODE_DISABLE_CLAUDE_CODE: "true",
     OPENCODE_DISABLE_EXTERNAL_SKILLS: "true",
   });
   return env;
 }
 
-function prepare(engine) {
+// Repos that keep their rules in CLAUDE.md (no AGENTS.md): pass those files as
+// instructions, from the git root down to the working directory.
+export function projectInstructions(dir, exists = existsSync) {
+  const chain = [];
+  let cur = resolve(dir);
+  for (let i = 0; i < 64; i++) {
+    chain.unshift(cur);
+    if (exists(join(cur, ".git"))) break;
+    const up = dirname(cur);
+    if (up === cur) return [];
+    cur = up;
+  }
+  if (!exists(join(chain[0], ".git"))) return [];
+  return chain.filter((d) => !exists(join(d, "AGENTS.md")) && exists(join(d, "CLAUDE.md"))).map((d) => join(d, "CLAUDE.md"));
+}
+
+function workDir(args) {
+  const i = args.indexOf("--dir");
+  if (i >= 0 && args[i + 1]) return resolve(args[i + 1]);
+  const first = args[0];
+  if (first && !first.startsWith("-") && existsSync(first) && statSync(first).isDirectory()) return resolve(first);
+  return process.cwd();
+}
+
+function prepare(engine, args = []) {
   for (const d of ["config", "data", "state", "cache"]) mkdirSync(join(BASE, d), { recursive: true });
   const env = engineEnv();
+  const instructions = projectInstructions(workDir(args));
+  if (instructions.length) env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ instructions });
   if (IS_WIN && !env.OPENCODE_GIT_BASH_PATH) {
     const bash = gitBash();
     if (!bash) die("Git for Windows (with Git Bash) is required: https://git-scm.com/download/win");
@@ -152,7 +180,7 @@ function engine(args, { capture = false } = {}) {
   const versions = readVersions();
   const bin = enginePath(versions.OPENCODE_VERSION);
   if (!existsSync(bin)) die("OpenCode is not installed; run: team-harness setup");
-  const { env } = prepare(bin);
+  const { env } = prepare(bin, args);
   if (capture) return run(bin, args, { env });
   process.on("SIGINT", () => {}); // the TUI owns Ctrl+C
   const r = spawnSync(bin, args, { stdio: "inherit", env });
@@ -245,7 +273,7 @@ function login(only) {
 
 // ---------- doctor ----------
 
-const ROLES = ["lead", "lead-kimi", "worker", "takeover", "scout", "reviewer", "advisor"];
+const ROLES = ["lead", "lead-kimi", "worker", "takeover", "scout", "analyst", "reviewer", "advisor"];
 
 function doctor() {
   const versions = readVersions();

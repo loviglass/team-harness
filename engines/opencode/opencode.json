@@ -1,5 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    "./plugins/output-cap.js"
+  ],
   "model": "openai/gpt-6-astra",
   "small_model": "deepseek/deepseek-flash",
   "default_agent": "lead",
@@ -12,15 +15,30 @@
     "preserve_recent_tokens": 15000
   },
   "agent": {
-    "build": { "disable": true },
-    "plan": { "disable": true },
-    "general": { "disable": true },
-    "explore": { "disable": true },
-
-    "title": { "model": "deepseek/deepseek-flash", "variant": "low" },
-    "summary": { "model": "deepseek/deepseek-flash", "variant": "low" },
-    "compaction": { "model": "deepseek/deepseek-flash", "variant": "high" },
-
+    "build": {
+      "disable": true
+    },
+    "plan": {
+      "disable": true
+    },
+    "general": {
+      "disable": true
+    },
+    "explore": {
+      "disable": true
+    },
+    "title": {
+      "model": "deepseek/deepseek-flash",
+      "variant": "low"
+    },
+    "summary": {
+      "model": "deepseek/deepseek-flash",
+      "variant": "low"
+    },
+    "compaction": {
+      "model": "deepseek/deepseek-flash",
+      "variant": "high"
+    },
     "lead": {
       "description": "Lead (Astra): decides, writes task briefs, delegates, accepts results. Cannot edit or run commands.",
       "mode": "primary",
@@ -44,8 +62,10 @@
           "scout": "allow",
           "takeover": "allow",
           "reviewer": "allow",
-          "advisor": "allow"
-        }
+          "advisor": "allow",
+          "analyst": "allow"
+        },
+        "todowrite": "deny"
       }
     },
     "lead-kimi": {
@@ -71,11 +91,12 @@
           "scout": "allow",
           "takeover": "allow",
           "reviewer": "allow",
-          "advisor": "allow"
-        }
+          "advisor": "allow",
+          "analyst": "allow"
+        },
+        "todowrite": "deny"
       }
     },
-
     "worker": {
       "description": "Implements ONE bounded task from a brief (goal, files, acceptance commands). Single writer. Runs the acceptance commands itself. Cheap: use for all clear implementation, tests, mechanical edits, docs.",
       "mode": "subagent",
@@ -83,7 +104,11 @@
       "variant": "high",
       "steps": 60,
       "prompt": "{file:./prompts/worker.md}",
-      "permission": { "task": "deny", "webfetch": "deny", "websearch": "deny" }
+      "permission": {
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny"
+      }
     },
     "takeover": {
       "description": "Stronger implementer (Kimi). Only after worker failed twice on the same acceptance check, or for tightly coupled cross-module changes. Give it the brief, current diff summary and the failing output.",
@@ -92,10 +117,12 @@
       "variant": "high",
       "steps": 80,
       "prompt": "{file:./prompts/worker.md}",
-      "permission": { "task": "deny" }
+      "permission": {
+        "task": "deny"
+      }
     },
     "scout": {
-      "description": "Read-only research: finds code paths, explains how something works, checks docs/web. Returns a compact context pack (paths, line ranges, key excerpts). Cheap.",
+      "description": "Fast read-only search: WHERE is something and how is it wired. Returns paths, line ranges and short excerpts. Not for deep analysis (use analyst). Cheap.",
       "mode": "subagent",
       "model": "deepseek/deepseek-flash",
       "variant": "low",
@@ -109,15 +136,35 @@
           "git log*": "allow",
           "git show*": "allow",
           "git diff*": "allow",
-          "git grep*": "allow",
           "ls*": "allow",
-          "rg *": "allow",
+          "wc *": "allow"
+        }
+      }
+    },
+    "analyst": {
+      "description": "Read-only deep analysis: investigate a hypothesis, audit a subsystem for real defects, explain complex behaviour, compare designs against the code. Returns verified findings with path:line. Cheap; use instead of scout when the question needs reasoning, not just search.",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-flash",
+      "variant": "high",
+      "steps": 40,
+      "prompt": "{file:./prompts/analyst.md}",
+      "permission": {
+        "edit": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "bash": {
+          "*": "deny",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git diff*": "allow",
+          "ls*": "allow",
           "wc *": "allow"
         }
       }
     },
     "reviewer": {
-      "description": "Independent review of a finished change: gets the brief and the diff range, returns concrete findings with severity. Read-only. Use for medium/high-risk changes after acceptance commands pass.",
+      "description": "Independent review by a stronger model: (1) a finished risky diff against its brief, or (2) verification of specific findings at given path:line. Read-only. Expensive (ChatGPT quota): send precise claims and ranges, not open questions.",
       "mode": "subagent",
       "model": "openai/gpt-6-astra",
       "variant": "high",
@@ -143,18 +190,40 @@
       "variant": "high",
       "steps": 1,
       "prompt": "{file:./prompts/advisor.md}",
-      "permission": { "*": "deny" }
+      "permission": {
+        "*": "deny"
+      }
     }
   },
   "provider": {
     "kimi-code-plan-global": {
       "models": {
-        "k3.1-pro": { "limit": { "context": 262144, "input": 196608, "output": 65536 } }
+        "k3.1-pro": {
+          "limit": {
+            "context": 262144,
+            "input": 196608,
+            "output": 65536
+          }
+        }
       },
-      "whitelist": ["k3.1-pro"]
+      "whitelist": [
+        "k3.1-pro"
+      ]
     },
-    "openai": { "whitelist": ["gpt-6-astra"] },
-    "deepseek": { "whitelist": ["deepseek-flash"] }
+    "openai": {
+      "whitelist": [
+        "gpt-6-astra"
+      ]
+    },
+    "deepseek": {
+      "whitelist": [
+        "deepseek-flash"
+      ]
+    }
   },
-  "enabled_providers": ["kimi-code-plan-global", "openai", "deepseek"]
+  "enabled_providers": [
+    "kimi-code-plan-global",
+    "openai",
+    "deepseek"
+  ]
 }
