@@ -12,10 +12,12 @@ test("mode B swaps smart roles to the other vendor", () => {
   assert.equal(routeSubagent("lead-kimi", "reviewer"), "reviewer-kimi");
   assert.equal(routeSubagent("lead-kimi", "advisor"), "advisor-kimi");
   assert.equal(routeSubagent("lead-kimi", "takeover"), "takeover-astra");
+  assert.equal(routeSubagent("lead-kimi", "analyst"), "analyst-ds");
+  assert.equal(routeSubagent("lead", "analyst"), "analyst");
 });
 
 test("cheap roles never change", () => {
   for (const lead of ["lead", "lead-kimi"]) {
-    for (const r of ["worker", "scout", "analyst"]) assert.equal(routeSubagent(lead, r), r);
+    for (const r of ["worker", "scout"]) assert.equal(routeSubagent(lead, r), r);
   }
 });

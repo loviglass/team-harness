@@ -26,7 +26,7 @@ export function load(dbPath, sinceMs = 0) {
     else if (p.type === "step-finish") {
       const t = p.tokens || {};
       const c = t.cache || {};
-      steps.push({ session: sid, agent: msg.agent, model: msg.modelID, input: t.input || 0, cacheRead: c.read || 0, cacheWrite: c.write || 0, output: (t.output || 0) + (t.reasoning || 0), tools: current.get(r.message_id) || [] });
+      steps.push({ session: sid, agent: msg.agent, model: msg.modelID, input: t.input || 0, cacheRead: c.read || 0, cacheWrite: c.write || 0, output: (t.output || 0) + (t.reasoning || 0), cost: Number(p.cost) || 0, tools: current.get(r.message_id) || [] });
       current.delete(r.message_id);
     }
   }
@@ -76,9 +76,9 @@ export function report({ sessions, steps }) {
   const byAgent = {};
   for (const s of steps) {
     const k = `${s.isRoot ? "root" : "child"}:${s.agent}/${s.model}`;
-    byAgent[k] ||= { steps: 0, ctx: 0, input: 0, cacheRead: 0, output: 0 };
+    byAgent[k] ||= { steps: 0, ctx: 0, input: 0, cacheRead: 0, output: 0, cost: 0 };
     const a = byAgent[k];
-    a.steps++; a.ctx += s.ctx; a.input += s.input; a.cacheRead += s.cacheRead; a.output += s.output;
+    a.steps++; a.ctx += s.ctx; a.input += s.input; a.cacheRead += s.cacheRead; a.output += s.output; a.cost += s.cost || 0;
   }
   const rootsOut = [...roots.values()].filter((r) => r.leadSteps).map((r) => ({
     id: r.id, title: r.title, leadModels: r.leadModels, leadSteps: r.leadSteps, leadCtx: r.leadCtx,
@@ -90,7 +90,7 @@ export function report({ sessions, steps }) {
   const leadTotal = rootsOut.reduce((n, r) => n + r.leadCtx, 0);
   const hands = rootsOut.reduce((n, r) => n + r.leadCtx * (r.leadCtxShare.hands_on || 0), 0);
   return {
-    summary: { rootSessions: rootsOut.length, leadCtxTotal: leadTotal, leadHandsOnShare: leadTotal ? Math.round((1000 * hands) / leadTotal) / 1000 : null, allCtxTotal: steps.reduce((n, s) => n + s.ctx, 0) },
+    summary: { costUSD: Math.round(steps.reduce((n, s) => n + (s.cost || 0), 0) * 1000) / 1000, rootSessions: rootsOut.length, leadCtxTotal: leadTotal, leadHandsOnShare: leadTotal ? Math.round((1000 * hands) / leadTotal) / 1000 : null, allCtxTotal: steps.reduce((n, s) => n + s.ctx, 0) },
     byAgentModel: Object.fromEntries(Object.entries(byAgent).sort((a, b) => b[1].ctx - a[1].ctx).map(([k, v]) => [k, { ...v, cacheHit: v.ctx ? Math.round((1000 * v.cacheRead) / v.ctx) / 1000 : null }])),
     roots: rootsOut,
   };
@@ -100,11 +100,12 @@ const fmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : `${Math.round(n / 1e
 
 export function printText(rep) {
   const s = rep.summary;
-  console.log(`Root sessions: ${s.rootSessions}   lead ctx: ${fmt(s.leadCtxTotal)}   lead hands-on share: ${s.leadHandsOnShare}   all ctx: ${fmt(s.allCtxTotal)}\n`);
-  console.log(`${"agent/model".padEnd(48)} ${"steps".padStart(6)} ${"ctx".padStart(8)} ${"avg".padStart(6)} ${"cache".padStart(6)}`);
+  console.log(`Root sessions: ${s.rootSessions}   lead ctx: ${fmt(s.leadCtxTotal)}   lead hands-on share: ${s.leadHandsOnShare}   all ctx: ${fmt(s.allCtxTotal)}   paid: $${s.costUSD}\n`);
+  console.log(`${"agent/model".padEnd(44)} ${"steps".padStart(6)} ${"ctx".padStart(8)} ${"avg".padStart(6)} ${"cache".padStart(6)} ${"$".padStart(8)}`);
   for (const [k, v] of Object.entries(rep.byAgentModel)) {
-    console.log(`${k.padEnd(48)} ${String(v.steps).padStart(6)} ${fmt(v.ctx).padStart(8)} ${fmt(v.ctx / Math.max(v.steps, 1)).padStart(6)} ${`${Math.round(100 * (v.cacheHit || 0))}%`.padStart(6)}`);
+    console.log(`${k.padEnd(44)} ${String(v.steps).padStart(6)} ${fmt(v.ctx).padStart(8)} ${fmt(v.ctx / Math.max(v.steps, 1)).padStart(6)} ${`${Math.round(100 * (v.cacheHit || 0))}%`.padStart(6)} ${(v.cost ? v.cost.toFixed(3) : "-").padStart(8)}`);
   }
+  console.log("($ = pay-per-token providers as priced by OpenCode; subscriptions show 0)");
   console.log();
   for (const r of rep.roots) {
     const share = Object.entries(r.leadCtxShare).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${Math.round(v * 100)}%`).join(" ");

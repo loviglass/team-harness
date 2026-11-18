@@ -69,7 +69,8 @@
           "analyst": "allow",
           "reviewer-kimi": "allow",
           "advisor-kimi": "allow",
-          "takeover-astra": "allow"
+          "takeover-astra": "allow",
+          "analyst-ds": "allow"
         }
       }
     },
@@ -100,16 +101,17 @@
           "analyst": "allow",
           "reviewer-kimi": "allow",
           "advisor-kimi": "allow",
-          "takeover-astra": "allow"
+          "takeover-astra": "allow",
+          "analyst-ds": "allow"
         }
       }
     },
     "worker": {
-      "description": "Implements ONE bounded task from a brief (goal, files, acceptance commands). Single writer. Runs the acceptance commands itself. Cheap: use for all clear implementation, tests, mechanical edits, docs.",
+      "description": "Cheap implementer (DeepSeek, pay per token) for ONE small, well-specified change: a localized fix, mechanical edit, conventional test, docs. Brief should fit in ~25 steps (1-3 files). Runs the acceptance commands itself.",
       "mode": "subagent",
       "model": "deepseek/deepseek-flash",
       "variant": "high",
-      "steps": 60,
+      "steps": 40,
       "prompt": "{file:./prompts/worker.md}",
       "permission": {
         "task": "deny",
@@ -179,7 +181,7 @@
       }
     },
     "takeover": {
-      "description": "Stronger implementer (Kimi). Only after worker failed twice on the same acceptance check, or for tightly coupled cross-module changes. Give it the brief, current diff summary and the failing output.",
+      "description": "Kimi implementer (subscription): multi-file features, tightly coupled or tricky changes, work that would take a worker more than ~25 steps, and any task the worker failed twice (send the brief, diff summary and failing output).",
       "mode": "subagent",
       "model": "kimi-code-plan-global/k3.1-pro",
       "variant": "high",
@@ -272,7 +274,30 @@
       }
     },
     "analyst": {
-      "description": "Read-only deep analysis: investigate a hypothesis, audit a subsystem for real defects, explain complex behaviour, compare designs against the code. Returns verified findings with path:line. Cheap; use instead of scout when the question needs reasoning, not just search.",
+      "description": "Read-only deep analysis on Kimi (subscription): investigate a hypothesis, audit a subsystem for real defects, explain complex behaviour, compare designs against the code. Returns verified findings with path:line. Use instead of scout when the question needs reasoning, not just search.",
+      "mode": "subagent",
+      "model": "kimi-code-plan-global/k3-256k",
+      "variant": "high",
+      "steps": 40,
+      "prompt": "{file:./prompts/analyst.md}",
+      "permission": {
+        "edit": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "bash": {
+          "*": "deny",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git diff*": "allow",
+          "ls*": "allow",
+          "wc *": "allow"
+        },
+        "gate": "deny"
+      }
+    },
+    "analyst-ds": {
+      "description": "Swap mirror of analyst (DeepSeek). Selected automatically in Kimi-lead mode; do not call directly.",
       "mode": "subagent",
       "model": "deepseek/deepseek-flash",
       "variant": "high",
@@ -440,10 +465,17 @@
             "input": 196608,
             "output": 65536
           }
+        },
+        "k3-256k": {
+          "limit": {
+            "context": 262144,
+            "output": 32768
+          }
         }
       },
       "whitelist": [
-        "k3.1-pro"
+        "k3.1-pro",
+        "k3-256k"
       ]
     },
     "openai": {

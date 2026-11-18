@@ -47,9 +47,10 @@ export function vendorOf(modelID = "") {
 }
 
 export function sessionSpend(steps, root) {
-  const out = { lead: 0, byVendor: {}, byRole: {}, steps: 0 };
+  const out = { lead: 0, byVendor: {}, byRole: {}, steps: 0, cost: 0 };
   for (const s of steps.filter((x) => x.root === root)) {
     out.steps++;
+    out.cost += s.cost || 0;
     out.byVendor[vendorOf(s.model)] = (out.byVendor[vendorOf(s.model)] || 0) + s.ctx;
     const role = s.isRoot ? "lead" : s.agent;
     out.byRole[role] = (out.byRole[role] || 0) + s.ctx;
@@ -118,7 +119,7 @@ export async function evalMain(args, { engineRun, dbPath, base, harnessRoot }) {
       const row = { at: new Date().toISOString(), task: task.name, variant, session, accepted, timedOut: r.timedOut, exit: r.status, wallS, acceptance, spend };
       appendFileSync(resultsFile, JSON.stringify(row) + "\n");
       results.push(row);
-      console.log(`  ${accepted ? "ACCEPTED" : "REJECTED"} in ${wallS}s · lead ${fmt(spend?.lead)} · ` + Object.entries(spend?.byVendor || {}).map(([v, n]) => `${v} ${fmt(n)}`).join(" · "));
+      console.log(`  ${accepted ? "ACCEPTED" : "REJECTED"} in ${wallS}s · lead ${fmt(spend?.lead)} · ` + Object.entries(spend?.byVendor || {}).map(([v, n]) => `${v} ${fmt(n)}`).join(" · ") + ` · $${(spend?.cost || 0).toFixed(3)}`);
       for (const a of acceptance.filter((x) => x.code !== 0)) console.log(`    ✗ ${a.cmd} (exit ${a.code})\n      ${a.tail.replace(/\n/g, "\n      ")}`);
       if (!keep) spawnSync("git", ["-C", task.project, "worktree", "remove", "--force", wt]);
       else console.log(`  worktree kept: ${wt}`);

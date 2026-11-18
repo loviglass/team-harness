@@ -8,12 +8,12 @@ const LIMITS = {
   scout: { text: [12000, 250], bash: [3000, 5000] },
   analyst: { text: [12000, 250], bash: [3000, 5000] },
   reviewer: { text: [12000, 250], bash: [3000, 5000] },
-  default: { text: [24000, 400], bash: [4000, 12000] }, // worker, takeover: keep test failures visible
+  default: { text: [12000, 300], bash: [3000, 6000] }, // worker, takeover: head + tail keeps test failures visible
 };
 const TEXT_TOOLS = new Set(["read", "grep", "glob", "list"]);
 
 function limitsFor(agent) {
-  const base = { "lead-kimi": "lead", "reviewer-kimi": "reviewer", "advisor-kimi": "advisor", "takeover-astra": "takeover" }[agent] || agent;
+  const base = { "lead-kimi": "lead", "reviewer-kimi": "reviewer", "advisor-kimi": "advisor", "takeover-astra": "takeover", "analyst-ds": "analyst" }[agent] || agent;
   return LIMITS[base] || LIMITS.default;
 }
 

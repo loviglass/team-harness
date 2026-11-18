@@ -15,10 +15,9 @@ test("scout read is capped with an offset/limit hint", () => {
   assert.match(out, /output truncated: .*offset\/limit/);
 });
 
-test("worker gets a larger budget than scout", () => {
-  const text = lines(350, 60);
-  assert.notEqual(capOutput("grep", "scout", text), null);
-  assert.equal(capOutput("grep", "worker", text), null);
+test("worker read budget is 12K chars / 300 lines", () => {
+  assert.equal(capOutput("read", "worker", lines(150, 60)), null);
+  assert.ok(capOutput("read", "worker", lines(1000, 60)).length < 12300);
 });
 
 test("bash keeps head and tail so test failures stay visible", () => {
@@ -27,7 +26,7 @@ test("bash keeps head and tail so test failures stay visible", () => {
   assert.match(out, /^START/);
   assert.match(out, /FAIL: TestX expected 2 got 3\n$/);
   assert.match(out, /chars omitted/);
-  assert.ok(out.length < 16500);
+  assert.ok(out.length < 9500);
 });
 
 test("lead-kimi uses the lead budget", () => {

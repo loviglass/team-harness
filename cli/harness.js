@@ -351,7 +351,7 @@ function modeCommand(args) {
 
 // ---------- doctor ----------
 
-const ROLES = ["lead", "lead-kimi", "worker", "takeover", "takeover-astra", "scout", "analyst", "reviewer", "reviewer-kimi", "advisor", "advisor-kimi"];
+const ROLES = ["lead", "lead-kimi", "worker", "takeover", "takeover-astra", "scout", "analyst", "analyst-ds", "reviewer", "reviewer-kimi", "advisor", "advisor-kimi"];
 
 function doctor() {
   const versions = readVersions();

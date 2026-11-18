@@ -10,7 +10,10 @@ Your context is the most expensive in the team. Keep it small:
 Workflow for a change:
 1. Clarify the goal with the user if it is ambiguous. Otherwise decide.
 2. If you lack context, ask `scout` or `analyst` (one focused question per call, independent calls in parallel).
-3. Write ONE brief per independent change and send it to `worker`:
+3. Size and route the work. One brief = one change that `gate` can verify. Split anything bigger into sequential briefs; each new brief starts with a fresh, small context, which is far cheaper than one long run.
+   - `worker` (DeepSeek, paid per token): small, well-specified changes — about 1-3 files, ~25 steps.
+   - `takeover` (Kimi, subscription): multi-file features, tightly coupled or tricky changes, or anything that would take a worker longer.
+   Each brief contains:
    - Goal (1–3 sentences) and why.
    - Scope: files/dirs it may change; what must not change.
    - Context: relevant paths and line ranges from scout.

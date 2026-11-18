@@ -7,6 +7,7 @@ export const SWAPPED = {
   reviewer: "reviewer-kimi",
   advisor: "advisor-kimi",
   takeover: "takeover-astra",
+  analyst: "analyst-ds", // in mode B Kimi already leads and reviews: keep analysis off its 5h window
 };
 const SWAP_LEAD = "lead-kimi";
 

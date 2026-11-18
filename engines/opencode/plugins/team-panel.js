@@ -34,12 +34,12 @@ export function fmtTokens(n) {
 export function shortModel(id) {
   if (typeof id !== "string") return "?";
   const name = id.split("/").pop();
-  const known = { "gpt-6-astra": "Astra", "k3.1-pro": "Kimi", "deepseek-flash": "DS Flash" };
+  const known = { "gpt-6-astra": "Astra", "k3.1-pro": "Kimi", "k3-256k": "Kimi K3", "deepseek-flash": "DS Flash" };
   return known[name] || clean(name, 14);
 }
 
 // Swap mirrors (see swap.js): in mode B these agents serve the base role.
-export const BASE_ROLE = { "lead-kimi": "lead", "reviewer-kimi": "reviewer", "advisor-kimi": "advisor", "takeover-astra": "takeover" };
+export const BASE_ROLE = { "lead-kimi": "lead", "reviewer-kimi": "reviewer", "advisor-kimi": "advisor", "takeover-astra": "takeover", "analyst-ds": "analyst" };
 const MIRROR = Object.fromEntries(Object.entries(BASE_ROLE).map(([alt, base]) => [base, alt]));
 
 export function swapMode(leadAgent) {
