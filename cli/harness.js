@@ -294,7 +294,7 @@ export async function main(argv) {
     case "setup":
       await installEngine(readVersions());
       importOldAuth();
-      login();
+      if (!rest.includes("--no-login")) login();
       doctor();
       console.log("\nReady. Open a NEW terminal in your project folder and run: team-harness");
       return;

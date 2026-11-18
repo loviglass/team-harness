@@ -1,0 +1,54 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --test tests/*.test.mjs
+
+  # Real install of this commit on every OS, then config/role checks (no model calls).
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      TEAM_HARNESS_REPO: ${{ github.workspace }}
+      TEAM_HARNESS_REF: ${{ github.sha }}
+      TEAM_HARNESS_SKIP_LOGIN: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: install (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: sh install.sh
+      - name: install (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./install.ps1
+      - name: doctor + version (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          team-harness doctor
+          team-harness version
+          team-harness metrics || true
+      - name: doctor + version (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          call "%LOCALAPPDATA%\team-harness\bin\team-harness.cmd" doctor || exit /b 1
+          call "%LOCALAPPDATA%\team-harness\bin\team-harness.cmd" version || exit /b 1
+      - name: reinstall is idempotent (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: sh install.sh

@@ -32,7 +32,8 @@ if [ -d "$REPO/.git" ]; then
 else
   git clone --quiet "$REPO_URL" "$REPO"
 fi
-TAG=$(git -C "$REPO" tag --list 'v*' --sort=-v:refname | head -n 1)
+# TEAM_HARNESS_REF pins a branch/commit/tag (pilots, CI); default: latest release tag.
+TAG=${TEAM_HARNESS_REF:-$(git -C "$REPO" tag --list 'v*' --sort=-v:refname | head -n 1)}
 if [ -n "$TAG" ]; then git -C "$REPO" checkout --quiet --force "$TAG"; fi
 
 # Pinned OpenCode engine (official release, checksum-verified).
@@ -76,7 +77,9 @@ case ":$PATH:" in
 esac
 
 # Logins and checks (interactive; stdin may be the curl pipe).
-if [ -r /dev/tty ]; then
+if [ -n "${TEAM_HARNESS_SKIP_LOGIN:-}" ]; then
+  "$BIN/team-harness" setup --no-login
+elif (: < /dev/tty) 2>/dev/null; then
   "$BIN/team-harness" setup < /dev/tty
 else
   "$BIN/team-harness" setup

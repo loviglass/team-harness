@@ -35,7 +35,8 @@ if (Test-Path (Join-Path $Repo '.git')) {
   git clone --quiet $RepoUrl $Repo
 }
 if ($LASTEXITCODE -ne 0) { throw 'git clone/fetch failed' }
-$Tag = git -C $Repo tag --list 'v*' --sort=-v:refname | Select-Object -First 1
+# TEAM_HARNESS_REF pins a branch/commit/tag (pilots, CI); default: latest release tag.
+$Tag = if ($env:TEAM_HARNESS_REF) { $env:TEAM_HARNESS_REF } else { git -C $Repo tag --list 'v*' --sort=-v:refname | Select-Object -First 1 }
 if ($Tag) { git -C $Repo checkout --quiet --force $Tag }
 
 # Pinned OpenCode engine (official release, checksum-verified).
@@ -79,5 +80,6 @@ if (-not (($UserPath -split ';') -contains $Bin)) {
 Update-SessionPath
 
 # Logins and checks (interactive).
-& (Join-Path $Bin 'team-harness.cmd') setup
+$SetupArgs = if ($env:TEAM_HARNESS_SKIP_LOGIN) { @('setup', '--no-login') } else { @('setup') }
+& (Join-Path $Bin 'team-harness.cmd') @SetupArgs
 if ($LASTEXITCODE -ne 0) { throw 'setup failed' }
