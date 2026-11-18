@@ -1,0 +1,8 @@
+# OpenCode writes plugin dependencies into the config dir
+engines/opencode/node_modules/
+engines/opencode/package.json
+engines/opencode/package-lock.json
+engines/opencode/bun.lock
+engines/opencode/.gitignore
+__pycache__/
+eval/results/

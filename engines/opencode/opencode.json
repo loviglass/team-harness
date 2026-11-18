@@ -1,0 +1,160 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "openai/gpt-6-astra",
+  "small_model": "deepseek/deepseek-flash",
+  "default_agent": "lead",
+  "autoupdate": false,
+  "share": "disabled",
+  "compaction": {
+    "auto": true,
+    "prune": true,
+    "reserved": 100608,
+    "preserve_recent_tokens": 15000
+  },
+  "agent": {
+    "build": { "disable": true },
+    "plan": { "disable": true },
+    "general": { "disable": true },
+    "explore": { "disable": true },
+
+    "title": { "model": "deepseek/deepseek-flash", "variant": "low" },
+    "summary": { "model": "deepseek/deepseek-flash", "variant": "low" },
+    "compaction": { "model": "deepseek/deepseek-flash", "variant": "high" },
+
+    "lead": {
+      "description": "Lead (Astra): decides, writes task briefs, delegates, accepts results. Cannot edit or run commands.",
+      "mode": "primary",
+      "model": "openai/gpt-6-astra",
+      "variant": "high",
+      "prompt": "{file:./prompts/lead.md}",
+      "permission": {
+        "edit": "deny",
+        "question": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff --stat*": "allow",
+          "git log --oneline*": "allow"
+        },
+        "task": {
+          "*": "deny",
+          "worker": "allow",
+          "scout": "allow",
+          "takeover": "allow",
+          "reviewer": "allow",
+          "advisor": "allow"
+        }
+      }
+    },
+    "lead-kimi": {
+      "description": "Lead (Kimi): same role as lead, for A/B comparison.",
+      "mode": "primary",
+      "model": "kimi-code-plan-global/k3.1-pro",
+      "variant": "high",
+      "prompt": "{file:./prompts/lead.md}",
+      "permission": {
+        "edit": "deny",
+        "question": "allow",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "bash": {
+          "*": "deny",
+          "git status*": "allow",
+          "git diff --stat*": "allow",
+          "git log --oneline*": "allow"
+        },
+        "task": {
+          "*": "deny",
+          "worker": "allow",
+          "scout": "allow",
+          "takeover": "allow",
+          "reviewer": "allow",
+          "advisor": "allow"
+        }
+      }
+    },
+
+    "worker": {
+      "description": "Implements ONE bounded task from a brief (goal, files, acceptance commands). Single writer. Runs the acceptance commands itself. Cheap: use for all clear implementation, tests, mechanical edits, docs.",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-flash",
+      "variant": "high",
+      "steps": 60,
+      "prompt": "{file:./prompts/worker.md}",
+      "permission": { "task": "deny", "webfetch": "deny", "websearch": "deny" }
+    },
+    "takeover": {
+      "description": "Stronger implementer (Kimi). Only after worker failed twice on the same acceptance check, or for tightly coupled cross-module changes. Give it the brief, current diff summary and the failing output.",
+      "mode": "subagent",
+      "model": "kimi-code-plan-global/k3.1-pro",
+      "variant": "high",
+      "steps": 80,
+      "prompt": "{file:./prompts/worker.md}",
+      "permission": { "task": "deny" }
+    },
+    "scout": {
+      "description": "Read-only research: finds code paths, explains how something works, checks docs/web. Returns a compact context pack (paths, line ranges, key excerpts). Cheap.",
+      "mode": "subagent",
+      "model": "deepseek/deepseek-flash",
+      "variant": "low",
+      "steps": 30,
+      "prompt": "{file:./prompts/scout.md}",
+      "permission": {
+        "edit": "deny",
+        "task": "deny",
+        "bash": {
+          "*": "deny",
+          "git log*": "allow",
+          "git show*": "allow",
+          "git diff*": "allow",
+          "git grep*": "allow",
+          "ls*": "allow",
+          "rg *": "allow",
+          "wc *": "allow"
+        }
+      }
+    },
+    "reviewer": {
+      "description": "Independent review of a finished change: gets the brief and the diff range, returns concrete findings with severity. Read-only. Use for medium/high-risk changes after acceptance commands pass.",
+      "mode": "subagent",
+      "model": "openai/gpt-6-astra",
+      "variant": "high",
+      "steps": 15,
+      "prompt": "{file:./prompts/reviewer.md}",
+      "permission": {
+        "edit": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "bash": {
+          "*": "deny",
+          "git diff*": "allow",
+          "git show*": "allow",
+          "git log*": "allow"
+        }
+      }
+    },
+    "advisor": {
+      "description": "Thinking only, no tools. Send it a concrete decision or a stuck failure (brief + relevant excerpts + exact error) and get a diagnosis/plan back. Cheap in tokens because it reads only what you send.",
+      "mode": "subagent",
+      "model": "openai/gpt-6-astra",
+      "variant": "high",
+      "steps": 1,
+      "prompt": "{file:./prompts/advisor.md}",
+      "permission": { "*": "deny" }
+    }
+  },
+  "provider": {
+    "kimi-code-plan-global": {
+      "models": {
+        "k3.1-pro": { "limit": { "context": 262144, "input": 196608, "output": 65536 } }
+      },
+      "whitelist": ["k3.1-pro"]
+    },
+    "openai": { "whitelist": ["gpt-6-astra"] },
+    "deepseek": { "whitelist": ["deepseek-flash"] }
+  },
+  "enabled_providers": ["kimi-code-plan-global", "openai", "deepseek"]
+}
