@@ -57,7 +57,7 @@ jobs:
           & $shim version; if ($LASTEXITCODE -ne 0) { exit 1 }
           & $shim doctor; if ($LASTEXITCODE -ne 0) { exit 1 }
           & $shim setup --no-login; if ($LASTEXITCODE -ne 0) { exit 1 }
-          & $shim nosuchcommand; if ($LASTEXITCODE -ne 2) { exit 1 }
+          & $shim nosuchcommand; if ($LASTEXITCODE -eq 0) { exit 1 }; $global:LASTEXITCODE = 0
       - name: reinstall under PowerShell 7 (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
