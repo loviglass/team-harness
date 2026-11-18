@@ -30,5 +30,7 @@ test("bash keeps head and tail so test failures stay visible", () => {
 });
 
 test("lead-kimi uses the lead budget", () => {
-  assert.ok(capOutput("read", "lead-kimi", lines(1000)).length < 8300);
+  // lead: 250 lines (worker: 300)
+  assert.ok(capOutput("read", "lead-kimi", lines(1000, 30)).length < 8000);
+  assert.ok(capOutput("read", "worker", lines(1000, 30)).length > 9000);
 });

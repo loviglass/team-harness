@@ -56,8 +56,10 @@
         "bash": {
           "*": "deny",
           "git status*": "allow",
-          "git diff --stat*": "allow",
-          "git log --oneline*": "allow"
+          "git diff*": "allow",
+          "git show*": "allow",
+          "git log*": "allow",
+          "git blame*": "allow"
         },
         "task": {
           "*": "deny",
@@ -88,8 +90,10 @@
         "bash": {
           "*": "deny",
           "git status*": "allow",
-          "git diff --stat*": "allow",
-          "git log --oneline*": "allow"
+          "git diff*": "allow",
+          "git show*": "allow",
+          "git log*": "allow",
+          "git blame*": "allow"
         },
         "task": {
           "*": "deny",

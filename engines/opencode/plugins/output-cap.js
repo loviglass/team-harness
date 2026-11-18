@@ -4,7 +4,7 @@
 
 // [chars, lines] for read/grep/glob/list, and [head chars, tail chars] for bash.
 const LIMITS = {
-  lead: { text: [8000, 200], bash: [2000, 4000] },
+  lead: { text: [12000, 250], bash: [3000, 6000] },
   scout: { text: [12000, 250], bash: [3000, 5000] },
   analyst: { text: [12000, 250], bash: [3000, 5000] },
   reviewer: { text: [12000, 250], bash: [3000, 5000] },
