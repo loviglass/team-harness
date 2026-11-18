@@ -36,6 +36,19 @@ team-harness update              # git pull + движок, если пин см
 Личный `~/.config/opencode` не используется и не меняется. Данные и входы —
 в `~/.local/share/team-harness`. Проектные `opencode.json` и `AGENTS.md` подключаются как обычно.
 
+## Правая панель
+
+Под Context (если скрыта: `Ctrl+X`, затем `B`):
+
+- **Team** — роли и модели; `●` кто работает сейчас и над чем, `✓` сколько поручений завершено.
+- **Spend (this session)** — токены по ролям в этой сессии и текущий контекст lead.
+- **Usage & limits** — по каждому провайдеру окна от короткого к длинному (5h → Week → Month),
+  остаток в процентах и время сброса по местному времени; DeepSeek — баланс. Обновление раз в минуту,
+  ≤20% подсвечивается.
+
+Плагин — `engines/opencode/plugins/team-panel.js`, только публичный TUI API OpenCode.
+Тесты: `node --test tests/*.test.mjs`.
+
 ## Изменение команды
 
 Роли и модели — `engines/opencode/opencode.json`, промпты — `engines/opencode/prompts/`.
