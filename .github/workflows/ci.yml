@@ -8,12 +8,15 @@ on:
 
 jobs:
   unit:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: node --test tests/*.test.mjs
+      - run: node --test tests/cli.test.mjs tests/team-panel.test.mjs tests/output-cap.test.mjs tests/swap.test.mjs tests/accounts.test.mjs tests/eval.test.mjs tests/gate.test.mjs
 
   # Real install of this commit on every OS, then config/role checks (no model calls).
   install:

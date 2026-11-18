@@ -7,9 +7,10 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, chmodSync, copyFileSync, mkdtempSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { PROVIDERS, providerId, checkLabel, listAccounts, saveAccount, removeAccount, resolveAccounts, resolveMode, composeAuth, migrateLegacy, pin, loadPins } from "./accounts.js";
 
-export const ROOT = resolve(import.meta.dir ?? dirname(new URL(import.meta.url).pathname), "..");
+export const ROOT = resolve(import.meta.dir ?? dirname(fileURLToPath(import.meta.url)), "..");
 const IS_WIN = process.platform === "win32";
 const EXE = IS_WIN ? ".exe" : "";
 const UPDATE_EVERY_MS = 6 * 3600 * 1000;
