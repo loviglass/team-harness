@@ -29,8 +29,8 @@ team-harness            # вариант new (агент lead = Astra), Tab -> l
 ## Метрики
 
 ```sh
-harness-metrics:  python3 metrics/harness_metrics.py --db ~/.local/share/opencode-team-harness/data/opencode/opencode.db --since <дата> --json
-team-harness:     team-harness metrics --since <дата> --json
+old:   BUN_BE_BUN=1 ~/.local/share/team-harness/engine/opencode-*/opencode cli/metrics.js --db ~/.local/share/opencode-team-harness/data/opencode/opencode.db --since <дата> --json
+new:   team-harness metrics --since <дата> --json
 ```
 
 На задачу записать в `eval/results/<variant>.csv`:

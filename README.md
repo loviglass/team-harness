@@ -14,15 +14,23 @@
 
 Почему так и что дальше: [docs/PLAN.md](docs/PLAN.md). Замеры: [eval/README.md](eval/README.md).
 
-## Установка (Linux/macOS)
+## Установка — одна команда
 
+**macOS / Linux** (терминал):
 ```sh
-git clone <repo> ~/.local/share/team-harness/repo
-ln -s ~/.local/share/team-harness/repo/bin/team-harness ~/.local/bin/team-harness
-team-harness install-engine      # закреплённый OpenCode из versions.env, проверка SHA256
-team-harness auth import         # взять входы из старого harness, или: team-harness auth login
-team-harness doctor
+curl -fsSL https://raw.githubusercontent.com/loviglass/team-harness/main/install.sh | sh
 ```
+**Windows** (PowerShell, без прав администратора):
+```powershell
+irm https://raw.githubusercontent.com/loviglass/team-harness/main/install.ps1 | iex
+```
+
+Нужен только Git (на Windows ставится сам через winget, если его нет).
+Установщик за ~1 минуту: клонирует репо на последний релизный тег, скачивает закреплённый
+OpenCode с официального GitHub с проверкой SHA256, добавляет команду `team-harness` в PATH,
+переносит входы из старого harness (если он был) или проводит вход в ChatGPT, Kimi и DeepSeek,
+и запускает проверку. Node.js, Python, Go не нужны: CLI исполняется встроенным в OpenCode рантаймом Bun.
+Повторный запуск установщика безопасен (чинит/обновляет).
 
 ## Работа
 
@@ -30,11 +38,26 @@ team-harness doctor
 cd <проект>
 team-harness                     # TUI, агент lead; Tab — lead-kimi
 team-harness metrics --since 2026-11-18
-team-harness update              # git pull + движок, если пин сменился
+team-harness update [--check]    # вручную; обычно не нужно
+team-harness auth [provider]     # повторный вход
+team-harness doctor
 ```
 
-Личный `~/.config/opencode` не используется и не меняется. Данные и входы —
-в `~/.local/share/team-harness`. Проектные `opencode.json` и `AGENTS.md` подключаются как обычно.
+**Обновления автоматические:** при запуске (не чаще раза в 6 часов) клиент проверяет новый
+релизный тег `vX.Y.Z` и переключается на него; при смене версии OpenCode в `versions.env`
+скачивает новый движок. Без сети — работает текущая версия. Коммиты в `main` клиентам
+не приходят — только теги.
+
+Данные и входы: `~/.local/share/team-harness` (Linux), `~/Library/Application Support/team-harness` (macOS),
+`%LOCALAPPDATA%\team-harness` (Windows). Личный `~/.config/opencode` не используется и не меняется.
+Проектные `opencode.json` и `AGENTS.md` подключаются как обычно.
+
+## Выпуск обновления (владелец)
+
+```sh
+node --test tests/*.test.mjs && team-harness doctor
+git tag -a v0.2.0 -m "что изменилось" && git push origin main --tags
+```
 
 ## Правая панель
 
