@@ -62,6 +62,28 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: ./install.ps1
+      - name: engine update path in the CLI (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          case "$(uname -s)" in Darwin) B="$HOME/Library/Application Support/team-harness";; *) B="$HOME/.local/share/team-harness";; esac
+          cp "$(cat "$B/engine/current")" "$RUNNER_TEMP/opencode"
+          printf '%s' "$RUNNER_TEMP/opencode" > "$B/engine/current"
+          rm -rf "$B"/engine/opencode-*
+          team-harness update
+          team-harness doctor
+      - name: engine update path in the CLI (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $shim = Join-Path $env:LOCALAPPDATA 'team-harness\bin\team-harness.cmd'
+          $cur = Get-Content (Join-Path $env:LOCALAPPDATA 'team-harness\engine\current')
+          $keep = Join-Path $env:RUNNER_TEMP 'opencode.exe'
+          Copy-Item $cur $keep
+          Set-Content -NoNewline -Path (Join-Path $env:LOCALAPPDATA 'team-harness\engine\current') -Value $keep
+          Get-ChildItem (Join-Path $env:LOCALAPPDATA 'team-harness\engine') -Directory -Filter 'opencode-*' | Remove-Item -Recurse -Force
+          & $shim update; if ($LASTEXITCODE -ne 0) { exit 1 }
+          & $shim doctor; if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: reinstall is idempotent (macOS/Linux)
         if: runner.os != 'Windows'
         run: sh install.sh

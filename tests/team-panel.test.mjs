@@ -88,30 +88,7 @@ test("burn rate and manual swap hint", () => {
   assert.equal(p.swapHint(both, "A", now), null);
 });
 
-test("task list: order, states, gate verdicts, title cleanup, overflow", () => {
-  const children = [
-    { id: "a", agent: "scout", title: "Map architecture (@scout subagent)", time: { created: 1 } },
-    { id: "b", agent: "worker", title: "Fix median (@worker subagent)", time: { created: 3 } },
-    { id: "c", agent: "reviewer-kimi", title: "Review diff (@reviewer-kimi subagent)", time: { created: 5 } },
-    { id: "d", agent: "worker", title: "Retry", time: { created: 6 } },
-  ];
-  const items = p.taskItems({ children, statuses: { c: { type: "busy" } }, outcomes: { b: "error", d: "stopped" }, gates: [{ at: 4, pass: false }] });
-  const lines = p.renderTasks(items).map((l) => l.text);
-  assert.deepEqual(lines, [
-    "✓ scout    Map architecture",
-    "✗ worker   Fix median",
-    "✗ gate     FAIL",
-    "● reviewer Review diff",
-    "■ worker   Retry",
-  ]);
-  assert.equal(p.renderTasks(items, 2)[0].text, "… 3 earlier");
-  assert.equal(p.renderTasks([])[0].text, "no delegated tasks yet");
-});
-
-test("outcome and gate parsing", () => {
-  assert.equal(p.outcomeOf([{ info: { role: "assistant" } }]), "done");
-  assert.equal(p.outcomeOf([{ info: { role: "assistant", error: { name: "ProviderAuthError" } } }]), "error");
-  assert.equal(p.outcomeOf([{ info: { role: "assistant", error: { name: "MessageAbortedError" } } }]), "stopped");
+test("gate verdict parsing", () => {
   const parts = [
     { type: "tool", tool: "gate", state: { status: "completed", output: "GATE: PASS (1 checks)", time: { end: 9 } } },
     { type: "tool", tool: "read", state: { status: "completed", output: "x" } },

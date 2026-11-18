@@ -7,15 +7,11 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, rmSync, chmodSync, copyFileSync, mkdtempSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { PROVIDERS, providerId, checkLabel, listAccounts, saveAccount, removeAccount, resolveAccounts, resolveMode, composeAuth, migrateLegacy, pin, loadPins } from "./accounts.js";
 
 export const ROOT = resolve(import.meta.dir ?? dirname(new URL(import.meta.url).pathname), "..");
 const IS_WIN = process.platform === "win32";
 const EXE = IS_WIN ? ".exe" : "";
-const PROVIDERS = [
-  { id: "openai", hint: "OpenAI: choose 'ChatGPT Pro/Plus' and log in with YOUR subscription in the browser (not an API key)." },
-  { id: "kimi-code-plan-global", hint: "Kimi: paste your personal Kimi Code key from https://www.kimi.ai/code/console (not a Moonshot API key)." },
-  { id: "deepseek", hint: "DeepSeek: paste your personal key from https://platform.deepseek.com/api_keys (balance must be positive)." },
-];
 const UPDATE_EVERY_MS = 6 * 3600 * 1000;
 
 function die(msg) {
@@ -94,7 +90,7 @@ async function installEngine(versions) {
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-    const v = run(target, ["--version"]).stdout?.trim();
+    const v = run(target, ["--version"], { env: engineEnv() }).stdout?.trim();
     if (v !== version) die(`installed engine reports ${v}, expected ${version}`);
     console.log(`OpenCode ${version} installed.`);
   }
@@ -120,7 +116,7 @@ function gitBash() {
 export function engineEnv(base = BASE, root = ROOT, src = process.env) {
   const env = { ...src };
   for (const k of Object.keys(env)) {
-    if (k === "BUN_BE_BUN" || k === "OPENCODE_CONFIG" || k === "OPENCODE_CONFIG_CONTENT") delete env[k];
+    if (k === "BUN_BE_BUN" || k === "OPENCODE_CONFIG" || k === "OPENCODE_CONFIG_CONTENT" || k === "OPENCODE_AUTH_CONTENT" || k === "TEAM_HARNESS_ACCOUNTS") delete env[k];
   }
   Object.assign(env, {
     // Isolated from a personal ~/.config/opencode (e.g. a global Slim install).
@@ -166,8 +162,16 @@ function workDir(args) {
 function prepare(engine, args = []) {
   for (const d of ["config", "data", "state", "cache"]) mkdirSync(join(BASE, d), { recursive: true });
   const env = engineEnv();
-  const instructions = projectInstructions(workDir(args));
+  const dir = workDir(args);
+  const instructions = projectInstructions(dir);
   if (instructions.length) env.OPENCODE_CONFIG_CONTENT = JSON.stringify({ instructions });
+  // Per-process accounts for this project (see cli/accounts.js and plugins/accounts.js).
+  migrateLegacy(BASE, authFile());
+  const selection = resolveAccounts(BASE, gitRoot(dir) || dir);
+  if (Object.keys(selection).length) {
+    env.OPENCODE_AUTH_CONTENT = JSON.stringify(composeAuth(selection));
+    env.TEAM_HARNESS_ACCOUNTS = JSON.stringify(selection);
+  }
   if (IS_WIN && !env.OPENCODE_GIT_BASH_PATH) {
     const bash = gitBash();
     if (!bash) die("Git for Windows (with Git Bash) is required: https://git-scm.com/download/win");
@@ -239,14 +243,6 @@ function authFile() {
   return join(BASE, "data", "opencode", "auth.json");
 }
 
-function authStatus() {
-  try {
-    return JSON.parse(readFileSync(authFile(), "utf8"));
-  } catch {
-    return {};
-  }
-}
-
 function importOldAuth() {
   const src = join(OLD_HARNESS, "data", "opencode", "auth.json");
   if (!existsSync(src) || existsSync(authFile())) return false;
@@ -257,18 +253,96 @@ function importOldAuth() {
   return true;
 }
 
-function login(only) {
-  const auth = authStatus();
-  for (const p of PROVIDERS) {
-    if (only && p.id !== only) continue;
-    if (auth[p.id] && !only) {
-      console.log(`[ok] ${p.id} is connected`);
-      continue;
-    }
-    console.log(`\n${p.hint}`);
-    const status = engine(["auth", "login", "--provider", p.id]);
-    if (status !== 0 || !authStatus()[p.id]) die(`login to ${p.id} was not completed; re-run: team-harness auth`);
+const HINTS = {
+  openai: "OpenAI: choose 'ChatGPT Pro/Plus' and log in with YOUR subscription in the browser (not an API key).",
+  "kimi-code-plan-global": "Kimi: paste your personal Kimi Code key from https://www.kimi.ai/code/console (not a Moonshot API key).",
+  deepseek: "DeepSeek: paste your personal key from https://platform.deepseek.com/api_keys (balance must be positive).",
+};
+
+// Log in through OpenCode into a scratch data dir, then file the credential under a label.
+function addAccount(provider, label) {
+  checkLabel(label);
+  const bin = enginePath(readVersions().OPENCODE_VERSION);
+  if (!existsSync(bin)) die("OpenCode is not installed; run: team-harness setup");
+  mkdirSync(join(BASE, "state"), { recursive: true });
+  const tmp = mkdtempSync(join(BASE, "state", ".login-"));
+  try {
+    const env = engineEnv();
+    env.XDG_DATA_HOME = tmp;
+    console.log(`\n${HINTS[provider]}\nAccount label: ${label}`);
+    spawnSync(bin, ["auth", "login", "--provider", provider], { stdio: "inherit", env });
+    let entry;
+    try { entry = JSON.parse(readFileSync(join(tmp, "opencode", "auth.json"), "utf8"))[provider]; } catch {}
+    if (!entry) die(`login to ${provider} was not completed`);
+    saveAccount(BASE, provider, label, entry);
+    console.log(`[ok] ${PROVIDERS[provider].label} account "${label}" saved`);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+function ensureLogins() {
+  migrateLegacy(BASE, authFile());
+  const all = listAccounts(BASE);
+  for (const p of Object.keys(PROVIDERS)) {
+    if (all[p].length) console.log(`[ok] ${PROVIDERS[p].label}: ${all[p].join(", ")}`);
+    else addAccount(p, "main");
+  }
+}
+
+function projectRoot() {
+  return gitRoot(process.cwd()) || process.cwd();
+}
+
+function accountCommand(args) {
+  const [sub, ...rest] = args;
+  const project = rest.includes("--project");
+  const pos = rest.filter((a) => !a.startsWith("--"));
+  switch (sub) {
+    case undefined:
+    case "list": {
+      migrateLegacy(BASE, authFile());
+      const all = listAccounts(BASE);
+      const active = resolveAccounts(BASE, projectRoot());
+      console.log(`Accounts for ${projectRoot()} (mode ${resolveMode(BASE, projectRoot())}):`);
+      for (const p of Object.keys(PROVIDERS)) {
+        const labels = all[p].map((l) => (active[p]?.label === l ? `*${l}` : l)).join("  ") || "(none: team-harness account add " + PROVIDERS[p].aliases[0] + " main)";
+        console.log(`  ${PROVIDERS[p].label.padEnd(9)} ${labels}${active[p] ? `   [${active[p].pinned}]` : ""}`);
+      }
+      console.log("\n* = used here. Pin: team-harness account use <gpt|kimi|deepseek> <label> [--project]");
+      return;
+    }
+    case "add": {
+      const p = providerId(pos[0]);
+      return addAccount(p, pos[1] || "main");
+    }
+    case "use": {
+      const p = providerId(pos[0]);
+      const label = checkLabel(pos[1]);
+      if (!listAccounts(BASE)[p].includes(label)) die(`no ${PROVIDERS[p].label} account "${label}"; add it: team-harness account add ${pos[0]} ${label}`);
+      pin(BASE, { provider: p, label, project: project ? projectRoot() : null });
+      console.log(`${PROVIDERS[p].label} -> "${label}" ${project ? `for ${projectRoot()}` : "by default"}. Restart team-harness (team-harness -c continues the last session).`);
+      return;
+    }
+    case "remove": {
+      const p = providerId(pos[0]);
+      removeAccount(BASE, p, checkLabel(pos[1]));
+      console.log(`${PROVIDERS[p].label} account "${pos[1]}" removed`);
+      return;
+    }
+    default:
+      die("usage: team-harness account [list | add <provider> [label] | use <provider> <label> [--project] | remove <provider> <label>]");
+  }
+}
+
+function modeCommand(args) {
+  const m = (args.find((a) => !a.startsWith("--")) || "").toUpperCase();
+  if (!["A", "B"].includes(m)) {
+    console.log(`Mode here: ${resolveMode(BASE, projectRoot())}  (A: Astra leads, B: Kimi leads). Set: team-harness mode A|B [--project]`);
+    return;
+  }
+  pin(BASE, { mode: m, project: args.includes("--project") ? projectRoot() : null });
+  console.log(`Start mode ${m} ${args.includes("--project") ? `for ${projectRoot()}` : "by default"}. Tab still swaps inside a session.`);
 }
 
 // ---------- doctor ----------
@@ -289,11 +363,12 @@ function doctor() {
       if (bad.length) die(`${role} must not have tools: ${bad.join(", ")}`);
     }
   }
-  const auth = authStatus();
-  const missing = PROVIDERS.filter((p) => !auth[p.id]).map((p) => p.id);
+  migrateLegacy(BASE, authFile());
+  const all = listAccounts(BASE);
+  const missing = Object.keys(PROVIDERS).filter((p) => !all[p].length);
   const tag = run("git", ["-C", ROOT, "describe", "--tags", "--always"]).stdout?.trim();
   console.log(`ok: team-harness ${tag}, OpenCode ${v}, ${ROLES.length} roles valid, leads cannot edit`);
-  if (missing.length) console.log(`warning: not logged in: ${missing.join(", ")} (team-harness auth)`);
+  if (missing.length) console.log(`warning: not logged in: ${missing.join(", ")} (team-harness account add <provider> main)`);
 }
 
 // ---------- init: detect acceptance checks for the gate tool ----------
@@ -371,7 +446,12 @@ function usage() {
   team-harness [args]          open the TUI in the current folder (agent: lead)
   team-harness run ...         headless run (same as 'opencode run')
   team-harness setup           install engine, log in, check (run once)
-  team-harness auth [provider] log in (openai | kimi-code-plan-global | deepseek)
+  team-harness account [list]   subscriptions per provider; * = used in this project
+  team-harness account add <gpt|kimi|deepseek> [label]
+  team-harness account use <gpt|kimi|deepseek> <label> [--project]
+  team-harness account remove <provider> <label>
+  team-harness mode [A|B] [--project]   start mode: A = Astra leads, B = Kimi leads
+  team-harness auth [provider]  re-login the account used here
   team-harness update [--check]
   team-harness eval <tasks> [--variant A,B,solo]   run tasks headless and compare variants
   team-harness init            detect build/test/lint checks into .harness.json (for the gate tool)
@@ -399,13 +479,21 @@ export async function main(rawArgv) {
     case "setup":
       await installEngine(readVersions());
       importOldAuth();
-      if (!rest.includes("--no-login")) login();
+      if (rest.includes("--no-login")) migrateLegacy(BASE, authFile());
+      else ensureLogins();
       doctor();
       console.log("\nReady. Open a NEW terminal in your project folder and run: team-harness");
       return;
     case "auth":
-      if (rest[0] === "import") return void (importOldAuth() || console.log("Nothing to import."));
-      return login(rest[0]);
+      if (rest[0] === "import") return void (importOldAuth() ? migrateLegacy(BASE, authFile()) : console.log("Nothing to import."));
+      if (!rest[0]) return ensureLogins();
+      return addAccount(providerId(rest[0]), rest[1] || resolveAccounts(BASE, projectRoot())[providerId(rest[0])]?.label || "main");
+    case "account":
+    case "accounts":
+      try { return accountCommand(rest); } catch (e) { die(e.message); }
+      return;
+    case "mode":
+      return modeCommand(rest);
     case "update":
       if (!(await update({ force: true, check: rest.includes("--check") }))) await installEngine(readVersions());
       return;
@@ -449,7 +537,13 @@ export async function main(rawArgv) {
         const r = spawnSync(process.execPath, [join(ROOT, "cli", "harness.js"), ...argv], { stdio: "inherit", env: process.env });
         process.exit(r.status ?? 1);
       }
-      process.exit(engine(argv));
+      // Start in the project's pinned mode (B = Kimi leads) unless an agent was chosen explicitly.
+      let args = argv;
+      if (!argv.includes("--agent") && !ENGINE_COMMANDS.has(argv[0])) {
+        const dir = workDir(argv);
+        if (resolveMode(BASE, gitRoot(dir) || dir) === "B") args = ["--agent", "lead-kimi", ...argv];
+      }
+      process.exit(engine(args));
     }
   }
 }

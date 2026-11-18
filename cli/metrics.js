@@ -43,7 +43,8 @@ export function load(dbPath, sinceMs = 0) {
   };
 }
 
-function kind(tools) {
+export function kind(tools) {
+  if (tools.length && tools.every((t) => t === "todowrite")) return "todo_only"; // a whole lead turn spent on bookkeeping
   if (tools.some((t) => DELEGATION.has(t))) return "delegation";
   if (tools.some((t) => HANDS_ON.has(t))) return "hands_on";
   return tools.length ? "other_tool" : "text";

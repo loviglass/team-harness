@@ -112,46 +112,6 @@ export function renderTeam(view) {
   return lines;
 }
 
-// ---------- task list: delegations and gate verdicts, in order (no model calls) ----------
-
-export function taskTitle(title) {
-  return clean(String(title || "").replace(/\s*\(@[\w.-]+ subagent\)\s*$/, ""), 60);
-}
-
-// children: Session[], statuses: {id: status}, outcomes: {id: "done"|"error"|"stopped"},
-// gates: [{at, pass}] from the lead's gate tool calls.
-export function taskItems({ children = [], statuses = {}, outcomes = {}, gates = [] }) {
-  const items = children.map((c) => {
-    const st = statuses[c.id]?.type;
-    const state = st === "busy" || st === "retry" ? "running" : outcomes[c.id] || "done";
-    return { at: c.time?.created || 0, role: BASE_ROLE[c.agent] || c.agent || "?", title: taskTitle(c.title), state };
-  });
-  for (const g of gates) items.push({ at: g.at, role: "gate", title: g.pass ? "PASS" : "FAIL", state: g.pass ? "done" : "error" });
-  return items.sort((a, b) => a.at - b.at);
-}
-
-const TASK_ICON = { running: "●", done: "✓", error: "✗", stopped: "■" };
-const TASK_TONE = { running: "active", done: "normal", error: "warning", stopped: "muted" };
-
-export function renderTasks(items, max = 10) {
-  if (!items.length) return [{ text: "no delegated tasks yet", tone: "muted" }];
-  const shown = items.slice(-max);
-  const lines = [];
-  if (items.length > shown.length) lines.push({ text: `… ${items.length - shown.length} earlier`, tone: "muted" });
-  for (const it of shown) {
-    lines.push({ text: `${TASK_ICON[it.state] || "·"} ${it.role.slice(0, 8).padEnd(9)}${it.title}`, tone: TASK_TONE[it.state] || "muted" });
-  }
-  return lines;
-}
-
-// Outcome of a finished child from its last assistant message.
-export function outcomeOf(messages) {
-  const last = [...(messages || [])].reverse().find((m) => (m.info || m)?.role === "assistant");
-  const err = (last?.info || last)?.error;
-  if (!err) return "done";
-  return err.name === "MessageAbortedError" ? "stopped" : "error";
-}
-
 // Gate verdicts from the root session's tool parts.
 export function gateVerdicts(parts) {
   return (parts || [])
@@ -261,7 +221,7 @@ const LOW_PERCENT = 20;
 
 // -> [{text, tone}] for one provider: header line, then one line per window.
 export function renderQuota(q) {
-  const lines = [{ text: q.label + (q.stale ? "  (stale)" : ""), tone: q.stale ? "warning" : "heading" }];
+  const lines = [{ text: q.label + (q.account ? ` · ${q.account}` : "") + (q.stale ? "  (stale)" : ""), tone: q.stale ? "warning" : "heading" }];
   if (q.status !== "ok") return [...lines, { text: `  ${q.status}`, tone: q.status === "auth rejected" ? "warning" : "muted" }];
   const sorted = [...(q.windows || [])].sort((a, b) => (a.prefix ? 1 : 0) - (b.prefix ? 1 : 0) || a.seconds - b.seconds);
   for (const w of sorted) {
@@ -317,14 +277,19 @@ const QUOTA_SOURCES = [
 
 export async function fetchQuotas(previous) {
   const dataHome = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+  // Accounts used by THIS process (team-harness), else the plain OpenCode login file.
+  let selection = {};
+  try { selection = JSON.parse(process.env.TEAM_HARNESS_ACCOUNTS || "{}"); } catch {}
   let auth = {};
-  try {
-    auth = JSON.parse(await readFile(join(dataHome, "opencode", "auth.json"), "utf8"));
-  } catch {
-    auth = {};
+  if (Object.keys(selection).length) {
+    for (const [p, sel] of Object.entries(selection)) {
+      try { auth[p] = JSON.parse(await readFile(sel.file, "utf8")); } catch {}
+    }
+  } else {
+    try { auth = JSON.parse(await readFile(join(dataHome, "opencode", "auth.json"), "utf8")); } catch { auth = {}; }
   }
-  const keep = (i, status) => (previous?.[i]?.status === "ok" ? { ...previous[i], stale: true } : { label: QUOTA_SOURCES[i].label, status });
-  return Promise.all(QUOTA_SOURCES.map(async (s, i) => {
+  const keep = (i, status) => (previous?.[i]?.status === "ok" ? { ...previous[i], stale: true } : { label: QUOTA_SOURCES[i].label, account: selection[QUOTA_SOURCES[i].id]?.label, status });
+  const results = await Promise.all(QUOTA_SOURCES.map(async (s, i) => {
     const cred = auth[s.id];
     const headers = s.auth(cred);
     if (!headers) return { label: s.label, status: "not connected" };
@@ -340,6 +305,7 @@ export async function fetchQuotas(previous) {
       return keep(i, "unavailable");
     }
   }));
+  return results.map((r, i) => ({ ...r, account: selection[QUOTA_SOURCES[i].id]?.label }));
 }
 
 // ---------- TUI ----------
@@ -354,8 +320,6 @@ export default {
     const [root, setRoot] = createSignal(null);
     const [children, setChildren] = createSignal([]);
     const [statuses, setStatuses] = createSignal({});
-    const [outcomes, setOutcomes] = createSignal({});
-    const outcomeFetched = new Set();
     const [quotas, setQuotas] = createSignal(QUOTA_SOURCES.map((s) => ({ label: s.label, status: "loading" })));
     let disposed = false;
 
@@ -381,16 +345,6 @@ export default {
       if (r) setRoot(r);
       if (Array.isArray(kids)) setChildren(kids);
       if (st && typeof st === "object") setStatuses(st);
-      // Once a child is idle, read its last messages once to tell done from error/stopped.
-      for (const c of Array.isArray(kids) ? kids : []) {
-        const busy = st?.[c.id]?.type === "busy" || st?.[c.id]?.type === "retry";
-        if (busy) { outcomeFetched.delete(c.id); continue; }
-        if (outcomeFetched.has(c.id)) continue;
-        outcomeFetched.add(c.id);
-        api.client.session.messages({ sessionID: c.id, limit: 2 }).then(data).then((msgs) => {
-          if (!disposed && Array.isArray(msgs)) setOutcomes((o) => ({ ...o, [c.id]: outcomeOf(msgs) }));
-        }).catch(() => outcomeFetched.delete(c.id));
-      }
     }
 
     async function pollQuotas() {
@@ -469,7 +423,7 @@ export default {
       slots: {
         sidebar_content: (_ctx, props) => {
           void resolveRoot(props.session_id).then((id) => {
-            if (id !== rootId()) { setRootId(id); setRoot(null); setChildren([]); setOutcomes({}); outcomeFetched.clear(); }
+            if (id !== rootId()) { setRootId(id); setRoot(null); setChildren([]); }
             clearTimeout(timer);
             void pollSession().finally(schedule);
           });
@@ -484,18 +438,15 @@ export default {
             insert(box, t);
           }
 
-          insert(box, heading("Tasks"));
-          const gates = createMemo(() => {
+          const lastGate = createMemo(() => {
             const id = rootId();
             const msgs = id ? api.state.session.messages(id) || [] : [];
-            return msgs.flatMap((m) => gateVerdicts(api.state.part(m.id)));
+            const all = msgs.flatMap((m) => gateVerdicts(api.state.part(m.id)));
+            return all.length ? all[all.length - 1] : null;
           });
-          const tasks = createMemo(() => renderTasks(taskItems({ children: children(), statuses: statuses(), outcomes: outcomes(), gates: gates() })));
-          for (let i = 0; i < 11; i++) {
-            const t = line(() => tasks()[i]?.text || "", () => tasks()[i]?.tone);
-            createEffect(() => setProp(t, "visible", i < tasks().length));
-            insert(box, t);
-          }
+          const gateLine = line(() => (lastGate() ? `gate      ${lastGate().pass ? "✓ PASS" : "✗ FAIL"} ${resetText(lastGate().at).slice(-5)}` : ""), () => (lastGate()?.pass ? "normal" : "warning"));
+          createEffect(() => setProp(gateLine, "visible", !!lastGate()));
+          insert(box, gateLine);
 
           insert(box, heading("Spend (this session)"));
           insert(box, line(() => renderSpend(view()).join("\n"), () => "muted"));

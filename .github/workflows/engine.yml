@@ -1,0 +1,109 @@
+name: engine
+# Follows OpenCode's official stable channel (npm opencode-ai@latest). When a new version
+# appears: pin it, install + check on every OS, then release a team-harness patch so clients
+# update on their next launch. If checks fail, nothing is released and an issue is opened.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency: engine
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      branch: ${{ steps.pin.outputs.branch }}
+      version: ${{ steps.pin.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - id: pin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          node tools/engine-pin.mjs --check
+          rc=$?
+          set -e
+          if [ "$rc" = 0 ]; then echo "already current"; exit 0; fi
+          [ "$rc" = 10 ] || exit "$rc"
+          node tools/engine-pin.mjs
+          v=$(sed -n 's/^OPENCODE_VERSION=//p' versions.env)
+          git config user.name "team-harness bot"
+          git config user.email "team-harness-bot@users.noreply.github.com"
+          git checkout -b "engine/$v"
+          git commit -am "Pin OpenCode $v (official stable channel)"
+          git push -f origin "engine/$v"
+          echo "branch=engine/$v" >> "$GITHUB_OUTPUT"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: check
+    if: needs.check.outputs.branch != ''
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      TEAM_HARNESS_REPO: ${{ github.workspace }}
+      TEAM_HARNESS_REF: ${{ needs.check.outputs.branch }}
+      TEAM_HARNESS_SKIP_LOGIN: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ needs.check.outputs.branch }}", fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node --test tests/cli.test.mjs tests/team-panel.test.mjs tests/output-cap.test.mjs tests/swap.test.mjs tests/accounts.test.mjs tests/eval.test.mjs tests/gate.test.mjs
+      - name: install + doctor (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          git checkout -B "${TEAM_HARNESS_REF}"
+          sh install.sh
+          export PATH="$HOME/.local/bin:$PATH"
+          team-harness doctor
+      - name: install + doctor (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          git checkout -B "$env:TEAM_HARNESS_REF"
+          ./install.ps1
+          & (Join-Path $env:LOCALAPPDATA 'team-harness\bin\team-harness.cmd') doctor
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+  release:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: fast-forward main and tag a patch release
+        run: |
+          git config user.name "team-harness bot"
+          git config user.email "team-harness-bot@users.noreply.github.com"
+          git fetch origin "${{ needs.check.outputs.branch }}"
+          git merge --ff-only FETCH_HEAD
+          last=$(git tag --list 'v*' --sort=-v:refname | head -n 1)
+          IFS=. read -r maj min pat <<< "${last#v}"
+          next="v${maj}.${min}.$((pat + 1))"
+          git tag -a "$next" -m "OpenCode ${{ needs.check.outputs.version }}"
+          git push origin HEAD:main "$next"
+          git push origin --delete "${{ needs.check.outputs.branch }}" || true
+
+  report:
+    needs: [check, test]
+    if: failure() && needs.check.outputs.branch != ''
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create -R "${{ github.repository }}" \
+            --title "OpenCode ${{ needs.check.outputs.version }}: compatibility checks failed" \
+            --body "The nightly engine check could not verify OpenCode ${{ needs.check.outputs.version }}. Clients stay on the current version. Branch: ${{ needs.check.outputs.branch }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
