@@ -217,52 +217,22 @@ export function parseDeepSeek(data) {
   return { windows: [], balances, note: data?.is_available === false ? "unavailable" : "" };
 }
 
-const LOW_PERCENT = 20;
+const LOW_PERCENT = 15;
 
 // -> [{text, tone}] for one provider: header line, then one line per window.
 export function renderQuota(q) {
-  const lines = [{ text: q.label + (q.account ? ` · ${q.account}` : "") + (q.stale ? "  (stale)" : ""), tone: q.stale ? "warning" : "heading" }];
+  const lines = [{ text: q.label + (q.account ? ` · ${q.account}` : ""), tone: "heading" }];
   if (q.status !== "ok") return [...lines, { text: `  ${q.status}`, tone: q.status === "auth rejected" ? "warning" : "muted" }];
   const sorted = [...(q.windows || [])].sort((a, b) => (a.prefix ? 1 : 0) - (b.prefix ? 1 : 0) || a.seconds - b.seconds);
   for (const w of sorted) {
     const name = ((w.prefix ? w.prefix + " " : "") + windowName(w.seconds)).slice(0, 12).padEnd(12);
     const pct = `${Math.round(w.remaining)}%`.padStart(4);
-    const rate = w.prefix ? null : burnRate(w);
-    const burn = rate !== null && rate >= 1.3 ? ` ${rate.toFixed(1)}×` : "";
-    lines.push({ text: `  ${name}${pct}  ${resetText(w.resetMs)}${burn}`, tone: w.remaining <= LOW_PERCENT || burn ? "warning" : "normal" });
+    lines.push({ text: `  ${name}${pct}  ${resetText(w.resetMs)}`, tone: w.remaining <= LOW_PERCENT ? "warning" : "normal" });
   }
   for (const b of q.balances || []) lines.push({ text: `  ${"Balance".padEnd(12)}${b}`, tone: "normal" });
   if (q.note) lines.push({ text: `  ${q.note}`, tone: "warning" });
   if (lines.length === 1) lines.push({ text: "  no data", tone: "muted" });
   return lines;
-}
-
-// Burn rate of a window: share of quota used / share of the window elapsed.
-// 1.0 = on pace to run out exactly at reset; 2.0 = twice as fast.
-export function burnRate(w, now = Date.now()) {
-  if (!Number.isFinite(w?.resetMs) || !w.seconds) return null;
-  const elapsed = 1 - (w.resetMs - now) / (w.seconds * 1000);
-  if (elapsed < 0.15 || elapsed > 1) return null; // too early in the window to judge
-  return (1 - w.remaining / 100) / elapsed;
-}
-
-export function providerBurn(q, now = Date.now()) {
-  if (q?.status !== "ok") return null;
-  const rates = (q.windows || []).filter((w) => !w.prefix).map((w) => ({ rate: burnRate(w, now), w })).filter((x) => x.rate !== null);
-  if (!rates.length) return null;
-  return rates.reduce((a, b) => (b.rate > a.rate ? b : a));
-}
-
-// Manual swap advice only: never switches anything by itself.
-export function swapHint(quotas, mode, now = Date.now()) {
-  const gpt = providerBurn(quotas.find((q) => q.label === "GPT"), now);
-  const kimi = providerBurn(quotas.find((q) => q.label === "Kimi"), now);
-  const fmt = (b) => `${b.rate.toFixed(1)}× (${windowName(b.w.seconds)})`;
-  const busy = mode === "B" ? kimi : gpt;
-  const idle = mode === "B" ? gpt : kimi;
-  if (!busy || busy.rate < 1.3) return null;
-  if (idle && idle.rate >= busy.rate * 0.8) return null;
-  return { text: `${mode === "B" ? "Kimi" : "GPT"} burning ${fmt(busy)} — consider Tab`, tone: "warning" };
 }
 
 const QUOTA_SOURCES = [
@@ -453,10 +423,6 @@ export default {
 
           insert(box, heading("Usage & limits"));
           insert(box, line(() => `${"".padEnd(14)}left  resets`, () => "muted"));
-          const hint = createMemo(() => swapHint(quotas(), mode()));
-          const hintLine = line(() => hint()?.text || "", () => "warning");
-          createEffect(() => setProp(hintLine, "visible", !!hint()));
-          insert(box, hintLine);
           const quotaLines = createMemo(() => quotas().flatMap(renderQuota));
           for (let i = 0; i < 16; i++) {
             const t = line(() => quotaLines()[i]?.text || "", () => quotaLines()[i]?.tone);
