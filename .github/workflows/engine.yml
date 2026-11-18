@@ -6,6 +6,14 @@ on:
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Pin this OpenCode version instead of npm latest (testing)"
+        required: false
+      dry_run:
+        description: "Run all checks but do not release"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,12 +36,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set +e
-          node tools/engine-pin.mjs --check
+          V="${{ inputs.version }}"
+          node tools/engine-pin.mjs --check ${V:+--version "$V"}
           rc=$?
           set -e
           if [ "$rc" = 0 ]; then echo "already current"; exit 0; fi
           [ "$rc" = 10 ] || exit "$rc"
-          node tools/engine-pin.mjs
+          node tools/engine-pin.mjs ${V:+--version "$V"}
           v=$(sed -n 's/^OPENCODE_VERSION=//p' versions.env)
           git config user.name "team-harness bot"
           git config user.email "team-harness-bot@users.noreply.github.com"
@@ -79,6 +88,7 @@ jobs:
 
   release:
     needs: [check, test]
+    if: ${{ !inputs.dry_run }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -98,7 +108,7 @@ jobs:
 
   report:
     needs: [check, test]
-    if: failure() && needs.check.outputs.branch != ''
+    if: failure() && needs.check.outputs.branch != '' && !inputs.dry_run
     runs-on: ubuntu-latest
     steps:
       - env:
