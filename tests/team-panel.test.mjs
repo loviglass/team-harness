@@ -70,3 +70,20 @@ test("mode B shows swapped models and counts mirror sessions under the base role
   assert.match(team.find((t) => t.startsWith("takeover")), /Astra/);
   assert.match(p.renderMode("B").text, /swapped/);
 });
+
+test("burn rate and manual swap hint", () => {
+  const now = Date.parse("2026-11-18T12:00:00Z");
+  const hour = 3600 * 1000;
+  // 5h window, 2.5h elapsed, 75% used -> 1.5x
+  const fast = { seconds: 5 * 3600, remaining: 25, resetMs: now + 2.5 * hour };
+  assert.equal(p.burnRate(fast, now).toFixed(1), "1.5");
+  // too early in a window -> no judgement
+  assert.equal(p.burnRate({ seconds: 5 * 3600, remaining: 90, resetMs: now + 4.9 * hour }, now), null);
+  const slowKimi = { seconds: 5 * 3600, remaining: 90, resetMs: now + 2.5 * hour };
+  const quotas = [{ label: "GPT", status: "ok", windows: [fast] }, { label: "Kimi", status: "ok", windows: [slowKimi] }];
+  assert.match(p.swapHint(quotas, "A", now).text, /GPT burning 1\.5× \(5h\) — consider Tab/);
+  assert.equal(p.swapHint(quotas, "B", now), null);
+  // both burning similarly -> swapping would not help
+  const both = [{ label: "GPT", status: "ok", windows: [fast] }, { label: "Kimi", status: "ok", windows: [{ ...fast, remaining: 30 }] }];
+  assert.equal(p.swapHint(both, "A", now), null);
+});

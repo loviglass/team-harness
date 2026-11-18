@@ -296,6 +296,73 @@ function doctor() {
   if (missing.length) console.log(`warning: not logged in: ${missing.join(", ")} (team-harness auth)`);
 }
 
+// ---------- init: detect acceptance checks for the gate tool ----------
+
+function gitRoot(dir) {
+  const r = run("git", ["-C", dir, "rev-parse", "--show-toplevel"]);
+  return r.status === 0 ? r.stdout.trim() : null;
+}
+
+function nodeRunner(dir, exists) {
+  if (exists(join(dir, "pnpm-lock.yaml"))) return "pnpm run";
+  if (exists(join(dir, "yarn.lock"))) return "yarn";
+  if (exists(join(dir, "bun.lockb")) || exists(join(dir, "bun.lock"))) return "bun run";
+  return "npm run";
+}
+
+// Returns [{name, run}] for one directory; prefix is "cd sub && " for nested packages.
+export function detectChecks(dir, { exists = existsSync, read = (f) => readFileSync(f, "utf8"), prefix = "", label = "" } = {}) {
+  const checks = [];
+  const add = (name, cmd) => checks.push({ name: label ? `${label}:${name}` : name, run: prefix + cmd });
+  if (exists(join(dir, "go.mod"))) {
+    add("build", "go build ./...");
+    add("vet", "go vet ./...");
+    add("test", "go test ./...");
+  }
+  if (exists(join(dir, "package.json"))) {
+    let scripts = {};
+    try { scripts = JSON.parse(read(join(dir, "package.json"))).scripts || {}; } catch {}
+    const runner = nodeRunner(dir, exists);
+    for (const name of ["typecheck", "type-check", "lint", "test"]) {
+      if (scripts[name] && !/no test specified/.test(scripts[name])) add(name.replace("type-check", "typecheck"), `${runner} ${name}`);
+    }
+  }
+  if (exists(join(dir, "Cargo.toml"))) {
+    add("check", "cargo check --all-targets");
+    add("test", "cargo test");
+  }
+  if (exists(join(dir, "pyproject.toml")) || exists(join(dir, "pytest.ini")) || exists(join(dir, "setup.py"))) {
+    add("test", "python -m pytest -q");
+  }
+  if (!checks.length && exists(join(dir, "Makefile"))) {
+    const mk = (() => { try { return read(join(dir, "Makefile")); } catch { return ""; } })();
+    if (/^test:/m.test(mk)) add("test", "make test");
+    if (/^lint:/m.test(mk)) add("lint", "make lint");
+  }
+  return checks;
+}
+
+function initGate(dir) {
+  const root = gitRoot(dir) || dir;
+  const file = join(root, ".harness.json");
+  if (existsSync(file)) {
+    console.log(`${file} already exists:\n${readFileSync(file, "utf8")}`);
+    return;
+  }
+  let gate = detectChecks(root);
+  // Monorepos: one level of nested packages (e.g. web/, frontend/).
+  for (const sub of readdirSync(root, { withFileTypes: true })) {
+    if (!sub.isDirectory() || sub.name.startsWith(".") || sub.name === "node_modules" || sub.name === "vendor") continue;
+    const d = join(root, sub.name);
+    if (existsSync(join(d, "package.json")) || existsSync(join(d, "go.mod")) || existsSync(join(d, "Cargo.toml")) || existsSync(join(d, "pyproject.toml"))) {
+      gate = gate.concat(detectChecks(d, { prefix: `cd ${sub.name} && `, label: sub.name }));
+    }
+  }
+  if (!gate.length) die("could not detect checks; create .harness.json by hand (see README)");
+  writeFileSync(file, JSON.stringify({ gate }, null, 2) + "\n");
+  console.log(`Created ${file}:\n${JSON.stringify({ gate }, null, 2)}\n\nReview the commands, then commit the file so the whole team uses the same gate.`);
+}
+
 // ---------- main ----------
 
 function usage() {
@@ -306,6 +373,8 @@ function usage() {
   team-harness setup           install engine, log in, check (run once)
   team-harness auth [provider] log in (openai | kimi-code-plan-global | deepseek)
   team-harness update [--check]
+  team-harness eval <tasks> [--variant A,B,solo]   run tasks headless and compare variants
+  team-harness init            detect build/test/lint checks into .harness.json (for the gate tool)
   team-harness doctor          check config and roles without model calls
   team-harness metrics [--since YYYY-MM-DD] [--json]
   team-harness version`);
@@ -334,6 +403,25 @@ export async function main(argv) {
       return;
     case "doctor":
       return doctor();
+    case "init":
+      return initGate(process.cwd());
+    case "eval": {
+      const { evalMain } = await import("./eval.js");
+      const bin = enginePath(readVersions().OPENCODE_VERSION);
+      if (!existsSync(bin)) die("OpenCode is not installed; run: team-harness setup");
+      const engineRun = (args, extraConfig, timeoutMs) => {
+        const { env } = prepare(bin, args);
+        const content = { ...(env.OPENCODE_CONFIG_CONTENT ? JSON.parse(env.OPENCODE_CONFIG_CONTENT) : {}), ...extraConfig };
+        env.OPENCODE_CONFIG_CONTENT = JSON.stringify(content);
+        const r = spawnSync(bin, args, { env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 256 << 20, stdio: ["ignore", "pipe", "pipe"] });
+        return { status: r.status ?? 1, stdout: r.stdout || "", timedOut: r.error?.code === "ETIMEDOUT" };
+      };
+      try {
+        return await evalMain(rest, { engineRun, dbPath: join(BASE, "data", "opencode", "opencode.db"), base: BASE, harnessRoot: ROOT });
+      } catch (e) {
+        die(`eval: ${e.message}`);
+      }
+    }
     case "metrics": {
       const { metricsMain } = await import("./metrics.js");
       return metricsMain(["--db", join(BASE, "data", "opencode", "opencode.db"), ...rest]);

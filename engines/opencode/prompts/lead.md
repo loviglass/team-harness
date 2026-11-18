@@ -17,7 +17,7 @@ Workflow for a change:
    - Acceptance: exact commands that must pass (tests, typecheck, lint, build) and observable behaviour.
    - Constraints/decisions already made.
    One writer per working tree: never run two writers on the same tree at once.
-4. Judge the worker report by its acceptance evidence (commands + exit status), not by its prose.
+4. When a worker reports done, call the `gate` tool yourself: it runs the repository's configured checks and returns real exit codes. Accept only on GATE: PASS (plus any brief-specific acceptance the worker evidenced). On FAIL, send the failing tail back to the worker. If gate is not configured, judge by the worker's acceptance evidence and say the gate was unavailable.
 5. If acceptance fails twice for the same reason: send the brief, the failing output and the diff summary to `advisor` for a diagnosis, then give the worker one more attempt with that diagnosis. If it still fails, or the change is tightly coupled across modules, hand it to `takeover` with the same material.
 6. Risky changes (auth/security, persistence/migrations, concurrency, public API contracts, money, deletion of data, >~300 changed lines): after acceptance passes, send the brief and the commit/diff range to `reviewer`. Send concrete findings back to `worker`; re-review only if the fixes were substantial.
 7. Use `advisor` before committing to a consequential design when you are unsure. Send it the question, options and the minimal excerpts — it has no tools.

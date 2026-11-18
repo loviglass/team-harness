@@ -2,7 +2,8 @@
   "$schema": "https://opencode.ai/config.json",
   "plugin": [
     "./plugins/output-cap.js",
-    "./plugins/swap.js"
+    "./plugins/swap.js",
+    "./plugins/gate.js"
   ],
   "model": "openai/gpt-6-astra",
   "small_model": "deepseek/deepseek-flash",
@@ -114,7 +115,68 @@
       "permission": {
         "task": "deny",
         "webfetch": "deny",
-        "websearch": "deny"
+        "websearch": "deny",
+        "bash": {
+          "*": "allow",
+          "git push*": "ask",
+          "git reset --hard*": "ask",
+          "git clean -*f*": "ask",
+          "git branch -D*": "ask",
+          "git stash drop*": "ask",
+          "git stash clear*": "ask",
+          "git checkout -- *": "ask",
+          "git restore *": "ask",
+          "rm -rf *": "ask",
+          "rm -fr *": "ask",
+          "chmod -R *": "ask",
+          "chown *": "ask",
+          "ssh *": "ask",
+          "scp *": "ask",
+          "rsync *:*": "ask",
+          "sftp *": "ask",
+          "kubectl *": "ask",
+          "helm *": "ask",
+          "ansible-playbook *": "ask",
+          "docker volume rm*": "ask",
+          "docker compose down -v*": "ask",
+          "docker-compose down -v*": "ask",
+          "docker rm -f*": "ask",
+          "psql *": "ask",
+          "mysql *": "ask",
+          "mongosh *": "ask",
+          "redis-cli *": "ask",
+          "gh release *": "ask",
+          "gh pr merge*": "ask",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push * --force*": "deny",
+          "git push * -f*": "deny",
+          "git push --mirror*": "deny",
+          "git filter-branch*": "deny",
+          "git filter-repo*": "deny",
+          "sudo *": "deny",
+          "su *": "deny",
+          "rm -rf /*": "deny",
+          "rm -rf ~*": "deny",
+          "rm -rf $HOME*": "deny",
+          "rm -rf ..*": "deny",
+          "mkfs*": "deny",
+          "dd *": "deny",
+          "shutdown*": "deny",
+          "reboot*": "deny",
+          "terraform apply*": "deny",
+          "terraform destroy*": "deny",
+          "docker system prune*": "deny",
+          "docker volume prune*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "yarn publish*": "deny",
+          "cargo publish*": "deny",
+          "curl * | sh*": "deny",
+          "curl * | bash*": "deny",
+          "wget * | sh*": "deny",
+          "wget * | bash*": "deny"
+        }
       }
     },
     "takeover": {
@@ -125,7 +187,68 @@
       "steps": 80,
       "prompt": "{file:./prompts/worker.md}",
       "permission": {
-        "task": "deny"
+        "task": "deny",
+        "bash": {
+          "*": "allow",
+          "git push*": "ask",
+          "git reset --hard*": "ask",
+          "git clean -*f*": "ask",
+          "git branch -D*": "ask",
+          "git stash drop*": "ask",
+          "git stash clear*": "ask",
+          "git checkout -- *": "ask",
+          "git restore *": "ask",
+          "rm -rf *": "ask",
+          "rm -fr *": "ask",
+          "chmod -R *": "ask",
+          "chown *": "ask",
+          "ssh *": "ask",
+          "scp *": "ask",
+          "rsync *:*": "ask",
+          "sftp *": "ask",
+          "kubectl *": "ask",
+          "helm *": "ask",
+          "ansible-playbook *": "ask",
+          "docker volume rm*": "ask",
+          "docker compose down -v*": "ask",
+          "docker-compose down -v*": "ask",
+          "docker rm -f*": "ask",
+          "psql *": "ask",
+          "mysql *": "ask",
+          "mongosh *": "ask",
+          "redis-cli *": "ask",
+          "gh release *": "ask",
+          "gh pr merge*": "ask",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push * --force*": "deny",
+          "git push * -f*": "deny",
+          "git push --mirror*": "deny",
+          "git filter-branch*": "deny",
+          "git filter-repo*": "deny",
+          "sudo *": "deny",
+          "su *": "deny",
+          "rm -rf /*": "deny",
+          "rm -rf ~*": "deny",
+          "rm -rf $HOME*": "deny",
+          "rm -rf ..*": "deny",
+          "mkfs*": "deny",
+          "dd *": "deny",
+          "shutdown*": "deny",
+          "reboot*": "deny",
+          "terraform apply*": "deny",
+          "terraform destroy*": "deny",
+          "docker system prune*": "deny",
+          "docker volume prune*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "yarn publish*": "deny",
+          "cargo publish*": "deny",
+          "curl * | sh*": "deny",
+          "curl * | bash*": "deny",
+          "wget * | sh*": "deny",
+          "wget * | bash*": "deny"
+        }
       }
     },
     "scout": {
@@ -145,7 +268,8 @@
           "git diff*": "allow",
           "ls*": "allow",
           "wc *": "allow"
-        }
+        },
+        "gate": "deny"
       }
     },
     "analyst": {
@@ -167,7 +291,8 @@
           "git diff*": "allow",
           "ls*": "allow",
           "wc *": "allow"
-        }
+        },
+        "gate": "deny"
       }
     },
     "reviewer": {
@@ -187,7 +312,8 @@
           "git diff*": "allow",
           "git show*": "allow",
           "git log*": "allow"
-        }
+        },
+        "gate": "deny"
       }
     },
     "advisor": {
@@ -218,7 +344,8 @@
           "git diff*": "allow",
           "git show*": "allow",
           "git log*": "allow"
-        }
+        },
+        "gate": "deny"
       }
     },
     "advisor-kimi": {
@@ -240,7 +367,68 @@
       "steps": 80,
       "prompt": "{file:./prompts/worker.md}",
       "permission": {
-        "task": "deny"
+        "task": "deny",
+        "bash": {
+          "*": "allow",
+          "git push*": "ask",
+          "git reset --hard*": "ask",
+          "git clean -*f*": "ask",
+          "git branch -D*": "ask",
+          "git stash drop*": "ask",
+          "git stash clear*": "ask",
+          "git checkout -- *": "ask",
+          "git restore *": "ask",
+          "rm -rf *": "ask",
+          "rm -fr *": "ask",
+          "chmod -R *": "ask",
+          "chown *": "ask",
+          "ssh *": "ask",
+          "scp *": "ask",
+          "rsync *:*": "ask",
+          "sftp *": "ask",
+          "kubectl *": "ask",
+          "helm *": "ask",
+          "ansible-playbook *": "ask",
+          "docker volume rm*": "ask",
+          "docker compose down -v*": "ask",
+          "docker-compose down -v*": "ask",
+          "docker rm -f*": "ask",
+          "psql *": "ask",
+          "mysql *": "ask",
+          "mongosh *": "ask",
+          "redis-cli *": "ask",
+          "gh release *": "ask",
+          "gh pr merge*": "ask",
+          "git push --force*": "deny",
+          "git push -f*": "deny",
+          "git push * --force*": "deny",
+          "git push * -f*": "deny",
+          "git push --mirror*": "deny",
+          "git filter-branch*": "deny",
+          "git filter-repo*": "deny",
+          "sudo *": "deny",
+          "su *": "deny",
+          "rm -rf /*": "deny",
+          "rm -rf ~*": "deny",
+          "rm -rf $HOME*": "deny",
+          "rm -rf ..*": "deny",
+          "mkfs*": "deny",
+          "dd *": "deny",
+          "shutdown*": "deny",
+          "reboot*": "deny",
+          "terraform apply*": "deny",
+          "terraform destroy*": "deny",
+          "docker system prune*": "deny",
+          "docker volume prune*": "deny",
+          "npm publish*": "deny",
+          "pnpm publish*": "deny",
+          "yarn publish*": "deny",
+          "cargo publish*": "deny",
+          "curl * | sh*": "deny",
+          "curl * | bash*": "deny",
+          "wget * | sh*": "deny",
+          "wget * | bash*": "deny"
+        }
       }
     }
   },
