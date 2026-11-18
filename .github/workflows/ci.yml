@@ -10,7 +10,8 @@ jobs:
   unit:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # macOS unit tests run inside the install job: hosted macOS runners are scarce, one per run is enough.
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +33,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        if: runner.os == 'macOS'
+        with: { node-version: 22 }
+      - name: unit tests (macOS)
+        if: runner.os == 'macOS'
+        run: node --test tests/cli.test.mjs tests/team-panel.test.mjs tests/output-cap.test.mjs tests/swap.test.mjs tests/accounts.test.mjs tests/eval.test.mjs tests/gate.test.mjs
       - name: install (macOS/Linux)
         if: runner.os != 'Windows'
         run: sh install.sh

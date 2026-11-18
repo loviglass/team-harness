@@ -13,7 +13,8 @@ import { PROVIDERS, providerId, checkLabel, listAccounts, saveAccount, removeAcc
 export const ROOT = resolve(import.meta.dir ?? dirname(fileURLToPath(import.meta.url)), "..");
 const IS_WIN = process.platform === "win32";
 const EXE = IS_WIN ? ".exe" : "";
-const UPDATE_EVERY_MS = 6 * 3600 * 1000;
+// Checked on every start; the short throttle only stops the post-update re-exec from checking twice.
+const UPDATE_EVERY_MS = 60 * 1000;
 
 function die(msg) {
   console.error(`team-harness: ${msg}`);
@@ -218,7 +219,7 @@ async function update({ force = false, check = false, quiet = false } = {}) {
   if (!force && existsSync(stamp) && Date.now() - statSync(stamp).mtimeMs < UPDATE_EVERY_MS) return false;
   mkdirSync(dirname(stamp), { recursive: true });
   writeFileSync(stamp, new Date().toISOString());
-  const git = (...a) => run("git", ["-C", ROOT, ...a], { timeout: 15000 });
+  const git = (...a) => run("git", ["-C", ROOT, ...a], { timeout: 8000 });
   const f = git("fetch", "--quiet", "--tags", "--force", "origin");
   if (f.status !== 0) {
     if (!quiet) console.log("Update check failed (offline?); keeping the current version.");
