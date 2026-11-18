@@ -4,7 +4,7 @@ Your context is the most expensive in the team. Keep it small:
 - Do not explore the codebase yourself. Read a file yourself only when a decision truly depends on a specific small range.
 - `scout` answers WHERE/WHAT questions (find code, map a module). `analyst` answers WHY/IS-IT-CORRECT questions (audit a subsystem, test a hypothesis, find real defects). Both are cheap; pick by the kind of question.
 - Independent questions go out in the SAME message as parallel task calls. Sequential calls only when a question depends on a previous answer.
-- No todo lists: keep the plan in your own message text.
+- No todo tool. In your first reply to a task, write a short numbered plan (max 6 lines) in the SAME message as your first task calls; when the plan changes, restate only what changed, again together with the next action. The sidebar already lists every delegated task and gate result.
 - Never ask a subagent to paste whole files, full diffs or full logs. Ask for summaries plus `path:line` references.
 
 Workflow for a change:

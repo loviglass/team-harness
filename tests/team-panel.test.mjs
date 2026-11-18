@@ -51,7 +51,7 @@ test("team view: one lead row, mirrors folded into base roles, who is working", 
   const team = p.renderTeam(v).map((l) => l.text);
   assert.equal(team.length, 4);
   assert.match(team[0], /^lead\s+Astra/);
-  assert.match(team[1], /worker\s+DS Flash\s+● Fix median/);
+  assert.match(team[1], /worker\s+DS Flash\s+● working/);
   assert.ok(!team.some((t) => /kimi|astra/.test(t.split(/\s+/)[0])));
   assert.match(p.renderSpend(v)[0], /lead\s+10K in/);
 });
@@ -86,4 +86,36 @@ test("burn rate and manual swap hint", () => {
   // both burning similarly -> swapping would not help
   const both = [{ label: "GPT", status: "ok", windows: [fast] }, { label: "Kimi", status: "ok", windows: [{ ...fast, remaining: 30 }] }];
   assert.equal(p.swapHint(both, "A", now), null);
+});
+
+test("task list: order, states, gate verdicts, title cleanup, overflow", () => {
+  const children = [
+    { id: "a", agent: "scout", title: "Map architecture (@scout subagent)", time: { created: 1 } },
+    { id: "b", agent: "worker", title: "Fix median (@worker subagent)", time: { created: 3 } },
+    { id: "c", agent: "reviewer-kimi", title: "Review diff (@reviewer-kimi subagent)", time: { created: 5 } },
+    { id: "d", agent: "worker", title: "Retry", time: { created: 6 } },
+  ];
+  const items = p.taskItems({ children, statuses: { c: { type: "busy" } }, outcomes: { b: "error", d: "stopped" }, gates: [{ at: 4, pass: false }] });
+  const lines = p.renderTasks(items).map((l) => l.text);
+  assert.deepEqual(lines, [
+    "✓ scout    Map architecture",
+    "✗ worker   Fix median",
+    "✗ gate     FAIL",
+    "● reviewer Review diff",
+    "■ worker   Retry",
+  ]);
+  assert.equal(p.renderTasks(items, 2)[0].text, "… 3 earlier");
+  assert.equal(p.renderTasks([])[0].text, "no delegated tasks yet");
+});
+
+test("outcome and gate parsing", () => {
+  assert.equal(p.outcomeOf([{ info: { role: "assistant" } }]), "done");
+  assert.equal(p.outcomeOf([{ info: { role: "assistant", error: { name: "ProviderAuthError" } } }]), "error");
+  assert.equal(p.outcomeOf([{ info: { role: "assistant", error: { name: "MessageAbortedError" } } }]), "stopped");
+  const parts = [
+    { type: "tool", tool: "gate", state: { status: "completed", output: "GATE: PASS (1 checks)", time: { end: 9 } } },
+    { type: "tool", tool: "read", state: { status: "completed", output: "x" } },
+    { type: "tool", tool: "gate", state: { status: "running" } },
+  ];
+  assert.deepEqual(p.gateVerdicts(parts), [{ at: 9, pass: true }]);
 });

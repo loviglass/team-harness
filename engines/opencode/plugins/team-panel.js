@@ -75,6 +75,7 @@ export function teamView({ roles, root, children = [], statuses = {}, leadContex
   };
   if (root) {
     const lead = ensure("lead");
+    lead.isLeadRow = true;
     const t = sessionTokens(root);
     lead.input += t.input; lead.output += t.output; lead.used = true;
     if (statuses[root.id]?.type === "busy" || statuses[root.id]?.type === "retry") lead.working.push(statuses[root.id].type === "retry" ? "retrying" : "thinking");
@@ -104,11 +105,58 @@ export function renderTeam(view) {
     const name = r.name.slice(0, 9).padEnd(10);
     const model = shortModel(r.model).slice(0, 8).padEnd(9);
     let state = "·";
-    if (r.working.length) state = `● ${r.working.length > 1 ? r.working.length + "× " : ""}${r.working[0]}`;
+    if (r.working.length) state = `● ${r.working.length > 1 ? r.working.length + "× " : ""}${r.isLeadRow ? r.working[0] : "working"}`;
     else if (r.done) state = `✓ ${r.done} done`;
     lines.push({ text: `${name}${model}${state}`, tone: r.working.length ? "active" : r.used ? "normal" : "muted" });
   }
   return lines;
+}
+
+// ---------- task list: delegations and gate verdicts, in order (no model calls) ----------
+
+export function taskTitle(title) {
+  return clean(String(title || "").replace(/\s*\(@[\w.-]+ subagent\)\s*$/, ""), 60);
+}
+
+// children: Session[], statuses: {id: status}, outcomes: {id: "done"|"error"|"stopped"},
+// gates: [{at, pass}] from the lead's gate tool calls.
+export function taskItems({ children = [], statuses = {}, outcomes = {}, gates = [] }) {
+  const items = children.map((c) => {
+    const st = statuses[c.id]?.type;
+    const state = st === "busy" || st === "retry" ? "running" : outcomes[c.id] || "done";
+    return { at: c.time?.created || 0, role: BASE_ROLE[c.agent] || c.agent || "?", title: taskTitle(c.title), state };
+  });
+  for (const g of gates) items.push({ at: g.at, role: "gate", title: g.pass ? "PASS" : "FAIL", state: g.pass ? "done" : "error" });
+  return items.sort((a, b) => a.at - b.at);
+}
+
+const TASK_ICON = { running: "●", done: "✓", error: "✗", stopped: "■" };
+const TASK_TONE = { running: "active", done: "normal", error: "warning", stopped: "muted" };
+
+export function renderTasks(items, max = 10) {
+  if (!items.length) return [{ text: "no delegated tasks yet", tone: "muted" }];
+  const shown = items.slice(-max);
+  const lines = [];
+  if (items.length > shown.length) lines.push({ text: `… ${items.length - shown.length} earlier`, tone: "muted" });
+  for (const it of shown) {
+    lines.push({ text: `${TASK_ICON[it.state] || "·"} ${it.role.slice(0, 8).padEnd(9)}${it.title}`, tone: TASK_TONE[it.state] || "muted" });
+  }
+  return lines;
+}
+
+// Outcome of a finished child from its last assistant message.
+export function outcomeOf(messages) {
+  const last = [...(messages || [])].reverse().find((m) => (m.info || m)?.role === "assistant");
+  const err = (last?.info || last)?.error;
+  if (!err) return "done";
+  return err.name === "MessageAbortedError" ? "stopped" : "error";
+}
+
+// Gate verdicts from the root session's tool parts.
+export function gateVerdicts(parts) {
+  return (parts || [])
+    .filter((p) => p?.type === "tool" && p.tool === "gate" && p.state?.status === "completed")
+    .map((p) => ({ at: p.state.time?.end || p.state.time?.start || 0, pass: /^GATE: PASS/.test(p.state.output || "") }));
 }
 
 export function renderSpend(view) {
@@ -306,6 +354,8 @@ export default {
     const [root, setRoot] = createSignal(null);
     const [children, setChildren] = createSignal([]);
     const [statuses, setStatuses] = createSignal({});
+    const [outcomes, setOutcomes] = createSignal({});
+    const outcomeFetched = new Set();
     const [quotas, setQuotas] = createSignal(QUOTA_SOURCES.map((s) => ({ label: s.label, status: "loading" })));
     let disposed = false;
 
@@ -331,6 +381,16 @@ export default {
       if (r) setRoot(r);
       if (Array.isArray(kids)) setChildren(kids);
       if (st && typeof st === "object") setStatuses(st);
+      // Once a child is idle, read its last messages once to tell done from error/stopped.
+      for (const c of Array.isArray(kids) ? kids : []) {
+        const busy = st?.[c.id]?.type === "busy" || st?.[c.id]?.type === "retry";
+        if (busy) { outcomeFetched.delete(c.id); continue; }
+        if (outcomeFetched.has(c.id)) continue;
+        outcomeFetched.add(c.id);
+        api.client.session.messages({ sessionID: c.id, limit: 2 }).then(data).then((msgs) => {
+          if (!disposed && Array.isArray(msgs)) setOutcomes((o) => ({ ...o, [c.id]: outcomeOf(msgs) }));
+        }).catch(() => outcomeFetched.delete(c.id));
+      }
     }
 
     async function pollQuotas() {
@@ -409,7 +469,7 @@ export default {
       slots: {
         sidebar_content: (_ctx, props) => {
           void resolveRoot(props.session_id).then((id) => {
-            if (id !== rootId()) { setRootId(id); setRoot(null); setChildren([]); }
+            if (id !== rootId()) { setRootId(id); setRoot(null); setChildren([]); setOutcomes({}); outcomeFetched.clear(); }
             clearTimeout(timer);
             void pollSession().finally(schedule);
           });
@@ -421,6 +481,19 @@ export default {
           for (let i = 0; i < 10; i++) {
             const t = line(() => team()[i]?.text || "", () => team()[i]?.tone);
             createEffect(() => setProp(t, "visible", i < team().length));
+            insert(box, t);
+          }
+
+          insert(box, heading("Tasks"));
+          const gates = createMemo(() => {
+            const id = rootId();
+            const msgs = id ? api.state.session.messages(id) || [] : [];
+            return msgs.flatMap((m) => gateVerdicts(api.state.part(m.id)));
+          });
+          const tasks = createMemo(() => renderTasks(taskItems({ children: children(), statuses: statuses(), outcomes: outcomes(), gates: gates() })));
+          for (let i = 0; i < 11; i++) {
+            const t = line(() => tasks()[i]?.text || "", () => tasks()[i]?.tone);
+            createEffect(() => setProp(t, "visible", i < tasks().length));
             insert(box, t);
           }
 
