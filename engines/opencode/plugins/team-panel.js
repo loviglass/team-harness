@@ -9,6 +9,8 @@ import { homedir } from "node:os";
 const POLL_ACTIVE_MS = 2000;
 const POLL_IDLE_MS = 10000;
 const QUOTA_MS = 60000;
+// Kimi /usages can take 10+ s when its API is loaded; must stay below QUOTA_MS.
+const QUOTA_TIMEOUT_MS = 25000;
 const HIDDEN_AGENTS = new Set(["title", "summary", "compaction", "build", "plan", "general", "explore"]);
 
 // ---------- pure helpers (exported for tests) ----------
@@ -265,7 +267,7 @@ export async function fetchQuotas(previous) {
     if (!headers) return { label: s.label, status: "not connected" };
     if (s.expired?.(cred)) return keep(i, "login refresh pending");
     try {
-      const res = await fetch(s.url, { headers: { ...headers, Accept: "application/json", "User-Agent": "team-harness/panel" }, redirect: "error", signal: AbortSignal.timeout(8000) });
+      const res = await fetch(s.url, { headers: { ...headers, Accept: "application/json", "User-Agent": "team-harness/panel" }, redirect: "error", signal: AbortSignal.timeout(QUOTA_TIMEOUT_MS) });
       if (res.status === 401 || res.status === 403) return { label: s.label, status: "auth rejected" };
       if (!res.ok) throw new Error(String(res.status));
       const text = await res.text();
